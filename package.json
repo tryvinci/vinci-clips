@@ -1,0 +1,15 @@
+{
+  "name": "vinci-clips",
+  "version": "1.0.0",
+  "description": "AI-powered video clipping tool",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix clips/backend && npm install --prefix clips/frontend",
+    "start": "concurrently \"npm:start:backend\" \"npm:start:frontend\"",
+    "start:backend": "npm start --prefix clips/backend",
+    "start:frontend": "npm run dev --prefix clips/frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 
