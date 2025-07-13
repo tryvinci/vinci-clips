@@ -1,0 +1,315 @@
+# Clips Development Rules
+
+## Project Overview
+The Clips is an AI-powered video clipping tool built on Google Cloud Platform (GCP) using a REST API server (Node.js/Express), Next.js for the frontend, OpenAI Whisper for transcription, MongoDB for data storage, and Google Gemini API (Flash 2.0) for LLM-based analysis. These rules ensure consistent, high-quality development, rapid iteration, and alignment with the Product Requirements Document (@PRD.md).
+
+## Code Structure and Style
+1. **File Organization**:
+   - Organize the project into clear directories: `/frontend` (Next.js), `/backend` (Express API), `/scripts` (Python for Whisper), and `/docs` (documentation).
+   - Use a monorepo structure with subdirectories for each service (e.g., `/frontend/pages`, `/backend/routes`).
+   - Example:
+     ```
+     /clips
+       /frontend
+         /pages
+         /components
+         /styles
+       /backend
+         /routes
+         /controllers
+         /models
+       /scripts
+         /transcription
+         /clipping
+       /docs
+         /api
+         /guides
+     ```
+
+2. **Naming Conventions**:
+   - Use camelCase for JavaScript variables and functions (e.g., `processVideo`, `uploadHandler`).
+   - Use PascalCase for React components (e.g., `VideoUpload`, `ClipPreview`).
+   - Use snake_case for Python scripts and file names (e.g., `transcribe_video.py`).
+   - Prefix API routes with `/clips` (e.g., `/clips/process-video`).
+
+3. **Code Style**:
+   - Enforce ESLint with Airbnb style guide for JavaScript/Node.js.
+   - Use Prettier for consistent formatting across JavaScript, TypeScript, and CSS.
+   - For Python, adhere to PEP 8 using `flake8` and `black` for formatting.
+   - Example `.eslintrc.json`:
+     ```json
+     {
+       "extends": "airbnb",
+       "rules": {
+         "no-console": "warn",
+         "react/prop-types": "off"
+       }
+     }
+     ```
+
+## Version Control
+1. **Git Workflow**:
+   - Use Git with a feature-branch workflow: `main` for production, `develop` for integration, and feature branches (e.g., `feature/video-upload`).
+   - Prefix branch names: `feature/`, `bugfix/`, `hotfix/`.
+   - Commit messages follow the format: `[type](scope): description` (e.g., `feat(upload): add video upload endpoint`).
+     - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.
+
+2. **Pull Requests**:
+   - Require at least one reviewer for PRs.
+   - Include a description linking to the @PRD.md feature or issue.
+   - Run CI checks (linting, tests) before merging.
+   - Example PR template:
+     ```
+     **Description**: Implements video upload API as per @PRD.md section 2.1.
+     **Changes**: Added /clips/process-video endpoint, integrated GCP Cloud Storage.
+     **Related Issue**: #123
+     ```
+
+## Development Practices
+1. **Modularity**:
+   - Write reusable React components in `/frontend/components` (e.g., `VideoPlayer.jsx`, `UploadDropzone.jsx`).
+   - Separate backend logic into controllers, services, and models (e.g., `/backend/controllers/videoController.js`).
+   - Encapsulate Whisper and FFmpeg scripts in Python modules (e.g., `/scripts/transcription/transcribe.py`).
+
+2. **Type Safety**:
+   - Use TypeScript for Next.js and Express to enforce type safety.
+   - Define interfaces for API payloads and MongoDB schemas (e.g., `IVideo`, `IClip`).
+   - Example:
+     ```typescript
+     interface IVideo {
+       userId: string;
+       filePath: string;
+       transcript: { start: number; end: number; text: string }[];
+     }
+     ```
+
+3. **Error Handling**:
+   - Implement global error middleware in Express for consistent API responses.
+   - Use try-catch blocks for async operations (e.g., Gemini API calls, FFmpeg processing).
+   - Example:
+     ```javascript
+     app.use((err, req, res, next) => {
+       res.status(500).json({ error: err.message });
+     });
+     ```
+
+4. **Rule Updates**:
+   - Any modifications or additions to these rules must be clearly documented in a pull request and reviewed by the team.
+   - Update rules everytime a prompt is made by the user suggesting a change in approach
+
+## Testing
+1. **Unit Tests**:
+   - Write unit tests for backend services using Jest (e.g., test `videoController` functions).
+   - Test frontend components with React Testing Library.
+   - Test Python scripts with `pytest` for Whisper integration.
+   - Aim for >80% code coverage.
+
+2. **Integration Tests**:
+   - Test API endpoints with Supertest (e.g., `/clips/process-video`).
+   - Mock GCP services (Cloud Storage, Gemini API) using `google-cloud-sdk` stubs.
+   - Example:
+     ```javascript
+     it('processes video and returns clips', async () => {
+       const res = await request(app).post('/clips/process-video').send({ videoPath: 'test.mp4' });
+       expect(res.status).toBe(200);
+       expect(res.body.clips).toBeDefined();
+     });
+     ```
+
+3. **End-to-End Tests**:
+   - Use Cypress for frontend E2E testing (e.g., video upload flow, clip preview).
+   - Test full workflow: upload → transcription → clipping → download.
+
+## API Integration
+1. **Gemini API (Flash 2.0)**:
+   - Use `@google-cloud/generative-ai` SDK for Gemini integration.
+   - Cache API responses in MongoDB to reduce costs and latency.
+   - Example:
+     ```javascript
+     const { GenerativeModel } = require('@google-cloud/generative-ai');
+     const model = new GenerativeModel('gemini-2.0-flash', { apiKey: process.env.GEMINI_API_KEY });
+     const result = await model.generateContent({ contents: [{ parts: [{ text: transcript }] }] });
+     ```
+
+2. **GCP Services**:
+   - Use `@google-cloud/storage` for video/clip storage.
+   - Deploy backend on Cloud Run, frontend on App Engine or Vercel.
+   - Use Cloud Tasks for asynchronous processing (e.g., clipping).
+   - Example:
+     ```javascript
+     const { Storage } = require('@google-cloud/storage');
+     const storage = new Storage();
+     await storage.bucket('clips-videos').upload('video.mp4');
+     ```
+
+3. **MongoDB**:
+   - Use Mongoose for schema management (e.g., `User`, `Video`, `Clip`).
+   - Index frequently queried fields (e.g., `userId`, `videoId`).
+   - Example:
+     ```javascript
+     const videoSchema = new mongoose.Schema({
+       userId: { type: String, required: true, index: true },
+       filePath: String,
+       transcript: [{ start: Number, end: Number, text: String }],
+     });
+     ```
+
+## Iteration and Feedback
+1. **Agile Development**:
+   - Use 2-week sprints with prioritized features from the @PRD.md (e.g., video upload in Sprint 1, clipping in Sprint 2).
+   - Hold sprint planning and retrospectives to refine processes.
+   - Track tasks in a tool like Jira or GitHub Issues.
+
+2. **User Feedback**:
+   - Implement a feedback form in the Next.js app to collect user input on clip quality.
+   - Address Clips limitations (e.g., incomplete clips) by refining Gemini prompts and adding manual editing tools.
+   - Example feedback endpoint:
+     ```javascript
+     app.post('/clips/feedback', async (req, res) => {
+       await db.collection('feedback').insertOne(req.body);
+       res.status(200).json({ message: 'Feedback received' });
+     });
+     ```
+
+3. **Continuous Deployment**:
+   - Use GitHub Actions for CI/CD, deploying to GCP Cloud Run/App Engine.
+   - Run linting, tests, and builds on each PR merge.
+   - Example `.github/workflows/deploy.yml`:
+     ```yaml
+     name: Deploy to GCP
+     on:
+       push:
+         branches: [main]
+     jobs:
+       deploy:
+         runs-on: ubuntu-latest
+         steps:
+           - uses: actions/checkout@v3
+           - uses: google-github-actions/setup-gcloud@v1
+             with:
+               service_account_key: ${{ secrets.GCP_SA_KEY }}
+           - run: gcloud run deploy clips-backend --source .
+     ```
+
+## Documentation
+1. **Code Documentation**:
+   - Use JSDoc for JavaScript/TypeScript functions and components.
+   - Document Python scripts with docstrings following Google Python Style Guide.
+   - Example:
+     ```javascript
+     /**
+      * Processes a video and generates clips.
+      * @param {string} videoPath - Path to the video file.
+      * @returns {Promise<string[]>} - Array of clip paths.
+      */
+     async function processVideo(videoPath) { ... }
+     ```
+
+2. **API Documentation**:
+   - Generate API docs with Swagger/OpenAPI, hosted at `/docs/api`.
+   - Example `/backend/openapi.yaml`:
+     ```yaml
+     paths:
+       /clips/process-video:
+         post:
+           summary: Process a video and generate clips
+           requestBody:
+             content:
+               application/json:
+                 schema:
+                   type: object
+                   properties:
+                     videoPath: { type: string }
+     ```
+
+3. **User Guides**:
+   - Maintain user guides in `/docs/guides` using Markdown.
+   - Include setup, usage, and troubleshooting instructions.
+
+4. **Project README**:
+   - A `README.md` file must be prepared at the project root (`/clips/README.md`) detailing the project setup, development environment, dependencies, and a clear plan/roadmap for features. This should also clarify that the frontend is for testing purposes, and the backend endpoints use the `/clips/` prefix for integration into an existing web app.
+
+## Performance and Scalability
+1. **Optimization**:
+   - Optimize Whisper transcription by using `base` model for faster processing, upgrading to `large` for high-accuracy needs.
+   - Cache Gemini API responses in MongoDB for repeated queries.
+   - Use GCP’s auto-scaling for Cloud Run to handle traffic spikes.
+
+2. **Monitoring**:
+   - Use GCP Cloud Monitoring for performance metrics (e.g., API latency, storage usage).
+   - Log errors with Cloud Logging, integrating with Sentry for real-time alerts.
+   - Example:
+     ```javascript
+     const { Logging } = require('@google-cloud/logging');
+     const log = new Logging().log('clips-errors');
+     log.error('Failed to process video: ' + error.message);
+     ```
+
+## Security
+1. **Authentication**:
+   - Use Firebase Authentication for user login/signup.
+   - Secure API endpoints with JWT or API keys.
+   - Example:
+     ```javascript
+     const { auth } = require('firebase-admin');
+     app.use('/clips/*', async (req, res, next) => {
+       const token = req.headers.authorization?.split('Bearer ')[1];
+       await auth.verifyIdToken(token);
+       next();
+     });
+     ```
+
+2. **Data Protection**:
+   - Encrypt video files in GCP Cloud Storage using customer-managed keys.
+   - Use MongoDB Atlas with encryption at rest.
+   - Comply with GDPR for user data handling.
+
+## Iteration Goals
+1. **MVP (Minimum Viable Product)**:
+   - Deliver core features: video upload, transcription, AI clipping, and clip download.
+   - Target completion: 4–6 weeks, covering @PRD.md sections 2.1–2.5.
+   - Deploy on GCP with basic Next.js UI.
+
+2. **Advanced Features**:
+   - Add auto-reframing, B-roll, and social media integration in subsequent sprints (@PRD.md sections 2.6–2.9).
+   - Implement virality scoring and team collaboration by Sprint 4.
+
+3. **Continuous Improvement**:
+   - Refine Gemini prompts based on user feedback to improve clip coherence.
+   - Optimize GCP costs by analyzing usage patterns (e.g., Cloud Billing reports).
+   - Release updates biweekly, incorporating user feedback and bug fixes.
+
+## Example Implementation
+To align with the @PRD.md, prioritize modular code and iterative development. Below is a sample Next.js component for video upload:
+```jsx
+// frontend/components/VideoUpload.jsx
+import { useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+
+export default function VideoUpload() {
+  const [uploading, setUploading] = useState(false);
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: { 'video/mp4': ['.mp4'], 'video/mov': ['.mov'] },
+    onDrop: async (files) => {
+      setUploading(true);
+      const formData = new FormData();
+      formData.append('video', files[0]);
+      await fetch('/clips/process-video', { method: 'POST', body: formData });
+      setUploading(false);
+    },
+  });
+
+  return (
+    <div className="p-4 border rounded">
+      <div {...getRootProps()}>
+        <input {...getInputProps()} />
+        <p>Drag and drop a video or click to upload</p>
+      </div>
+      {uploading && <p>Uploading...</p>}
+    </div>
+  );
+}
+```
+
+## Conclusion
+These rules ensure consistent, high-quality development of the Clips, leveraging GCP, Next.js, Whisper, MongoDB, and Gemini Flash 2.0. By enforcing modularity, testing, and iterative feedback, the project will align with the @PRD.md’s goals and address its limitations, delivering a scalable, user-friendly tool as of July 13, 2025.
