@@ -114,7 +114,7 @@ Our immediate focus is on building the core functionality as outlined in our [Pr
 ## Important Note on Integration
 This project is being developed as a standalone service intended for integration into a larger, existing web application.
 -   The **frontend** serves as a testing and demonstration interface.
--   All **backend API endpoints** are prefixed with `/clips/` to ensure they are properly namespaced.
+-   All **backend API endpoints** are prefixed with `/backend/` to ensure they are properly namespaced.
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details. 
