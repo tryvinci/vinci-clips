@@ -32,6 +32,10 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
    - Use snake_case for Python scripts and file names (e.g., `transcribe_video.py`).
    - Prefix API routes with `/clips` (e.g., `/clips/process-video`).
 
+4. **File Paths**:
+    - All frontend code must be placed in the `frontend/src` directory.
+    - All file paths in the frontend code must be relative to the `frontend` directory. For example, to import a component from `frontend/src/components/ui/button.tsx`, use the path ` "@/components/ui/button"`.
+
 3. **Code Style**:
    - Enforce ESLint with Airbnb style guide for JavaScript/Node.js.
    - Use Prettier for consistent formatting across JavaScript, TypeScript, and CSS.
