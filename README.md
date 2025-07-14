@@ -1,120 +1,97 @@
-# Clips: AI-Powered Video Clipping Tool
+# Vinci Clips
 
-Welcome to the Clips project! We're excited you're here. This tool is designed to revolutionize how content creators, marketers, and podcasters repurpose long-form video content into engaging, social-media-ready short clips.
+Vinci Clips is a web application that automatically generates short, engaging video clips from longer videos. It uses AI to transcribe the video, analyze the transcript, and suggest the best segments to use as clips.
 
-## About This Project
-Clips automates the entire process of video clipping—from transcription and analysis to editing and formatting. By leveraging a powerful stack including Google Cloud Platform (GCP), AI-driven analysis from OpenAI and Google, and a modern web framework, we aim to build a scalable, intuitive, and powerful tool.
+## Architecture
 
-This project is currently in the initial development phase. We welcome contributors of all levels to help us build something amazing.
+The application is built with a modern, full-stack architecture:
 
-## Core Features
-- **Video Upload & Processing**: Seamlessly upload various video formats with real-time feedback.
-- **AI-Powered Transcription**: Generate highly accurate, timestamped transcriptions in multiple languages.
-- **Intelligent Clipping**: Let our AI analyze the transcript and identify the most engaging, viral-worthy moments.
-- **Auto-Reframing & Formatting**: Automatically adjust clips for various social media aspect ratios (e.g., 9:16, 1:1).
-- **AI-Generated B-roll & Captions**: Enhance clips with contextually relevant B-roll and stylized, synchronized captions.
-- **Social Media Integration**: Schedule and post clips directly to your favorite platforms.
+-   **Frontend:** A Next.js application built with React and TypeScript. It uses `shadcn-ui` for components and Tailwind CSS for styling.
+-   **Backend:** A Node.js server built with Express. It handles video uploads, processing, and communication with the database and AI services.
+-   **Database:** MongoDB is used to store information about uploaded videos, transcripts, and generated clips.
+-   **AI Services:**
+    -   **Transcription:** Google's Gemini API is used to transcribe the audio from uploaded videos.
+    -   **Analysis:** The application can use either the Gemini or Groq API to analyze the transcript and suggest clips.
 
-## Technical Stack
-Our technology choices are guided by scalability, performance, and developer experience.
--   **Frontend**: **Next.js** with **React** & **Tailwind CSS** for a modern, responsive, and fast user interface.
--   **Backend**: **Node.js** with **Express.js** for a robust and scalable REST API.
--   **Database**: **MongoDB** for its flexible, JSON-like document model that maps perfectly to our application data.
--   **Cloud Platform**: **Google Cloud Platform (GCP)** for its scalable infrastructure, including Cloud Storage and Cloud Run.
--   **AI/ML**:
-    -   **OpenAI Whisper**: For state-of-the-art speech-to-text transcription.
-    -   **Google Gemini API (Flash 2.0)**: For advanced LLM-based analysis to identify key moments.
--   **Video Processing**: **FFmpeg** as the industry-standard tool for video manipulation.
+### High-Level Flow
 
-## Project Structure
-This project follows a monorepo structure to keep the frontend, backend, and scripts organized yet integrated.
-```
-/clips
-  ├── .github/            # CI/CD workflows
-  ├── backend/            # Node.js/Express REST API
-  │   ├── src/
-  │   ├── package.json
-  │   └── ...
-  ├── frontend/           # Next.js web application
-  │   ├── src/
-  │   ├── package.json
-  │   └── ...
-  ├── scripts/            # Python scripts (Whisper, FFmpeg automation)
-  │   ├── transcription/
-  │   └── clipping/
-  └── README.md
-```
+1.  **Upload:** The user uploads a video file through the web interface.
+2.  **Conversion:** The backend server converts the video to an MP3 file using `ffmpeg`.
+3.  **Cloud Storage:** Both the original video and the MP3 are uploaded to Google Cloud Storage.
+4.  **Transcription:** The backend calls a Python script that uses the Gemini API to transcribe the MP3 file.
+5.  **Analysis:** The backend calls a second Python script that uses either the Gemini or Groq API to analyze the transcript and generate up to 5 suggested clips.
+6.  **Database:** All data, including file URLs, the transcript, and the suggested clips, is stored in a MongoDB database.
+7.  **Display:** The frontend displays the transcript and the suggested clips to the user.
 
-## Getting Started
-Follow these steps to set up the project on your local machine.
+## Setup
 
-### Prerequisites
--   Node.js (v18+) & npm/yarn
--   Python (v3.8+) & pip
--   MongoDB Atlas account or a local MongoDB instance
--   Google Cloud Platform (GCP) account with Cloud Storage and Gemini API enabled
--   FFmpeg installed on your system
+To get the application running locally, follow these steps:
 
-### Installation
-1.  **Clone the repository**:
+1.  **Clone the repository:**
     ```bash
-    git clone <repository-url> clips
-    cd clips
+    git clone <repository-url>
+    cd vinci-clips
     ```
-2.  **Set up the Backend**:
-    ```bash
-    cd backend
-    npm install
-    cp .env.example .env # Create your environment file
-    ```
-    Now, fill in your credentials (MongoDB URI, GCP keys, etc.) in the `.env` file.
 
-3.  **Set up the Frontend**:
+2.  **Install dependencies:**
     ```bash
-    cd ../frontend
     npm install
     ```
-4.  **Set up Python Scripts**:
+
+3.  **Set up the Python virtual environment:**
     ```bash
-    cd ../scripts
-    pip install -r requirements.txt # A requirements file will be created
+    python3 -m venv scripts/venv
+    source scripts/venv/bin/activate
+    pip install -r scripts/requirements.txt
     ```
 
-### Running the Application
--   **Start the Backend Server**: `cd backend && npm start`
--   **Start the Frontend App**: `cd frontend && npm run dev`
+4.  **Install `ffmpeg`:**
+    If you don't have it, you can install it with Homebrew:
+    ```bash
+    brew install ffmpeg
+    ```
 
-The frontend will be accessible at `http://localhost:3000`.
+5.  **Create a `.env` file:**
+    Create a `.env` file in the root of the project and add the following environment variables:
 
-## How to Contribute
-We welcome contributions! Please follow our feature-branch Git workflow (`feature/`, `bugfix/`).
+    ```
+    # Port for the backend server
+    PORT=8080
 
-1.  Fork the repository and create your branch from `main`.
-2.  Make your changes, adhering to our coding standards (ESLint/Prettier for JS/TS, Black/Flake8 for Python).
-3.  Submit a pull request with a clear description of your changes, linking to any relevant issues.
+    # MongoDB Connection URI
+    DB_URL="your_mongodb_connection_uri"
+    DB_NAME=vinci_dev
 
-## Current Roadmap (Phase 1)
-Our immediate focus is on building the core functionality as outlined in our [Product Requirements Document](@PRD.md).
+    # GCP Credentials
+    GCP_PROJECT_ID="your_gcp_project_id"
+    GCP_BUCKET_NAME="your_gcp_bucket_name"
+    GCP_SERVICE_ACCOUNT_PATH="path/to/your/vinci-service-account.json"
 
--   **Milestone 1: Video Upload & Storage**
-    -   Develop the `VideoUpload` frontend component.
-    -   Implement the `/clips/upload` backend endpoint.
-    -   Integrate with GCP Cloud Storage for secure uploads.
+    # Gemini API Key
+    GEMINI_API_KEY="your_gemini_api_key"
 
--   **Milestone 2: Transcription Integration**
-    -   Create a Python script for Whisper transcription.
-    -   Connect the script to the backend for processing.
-    -   Store and display transcripts in the UI.
+    # Groq API Key
+    GROQ_API_KEY="your_groq_api_key"
 
--   **Milestone 3: AI Clipping & Preview**
-    -   Integrate the Gemini API for content analysis.
-    -   Develop logic to identify and generate clips.
-    -   Build a UI to preview clips and allow adjustments.
+    # LLM Configuration
+    LLM_PROVIDER="gemini" # or "groq"
+    LLM_MODEL="gemini-1.5-flash" # or any other supported model
+    ```
 
-## Important Note on Integration
-This project is being developed as a standalone service intended for integration into a larger, existing web application.
--   The **frontend** serves as a testing and demonstration interface.
--   All **backend API endpoints** are prefixed with `/backend/` to ensure they are properly namespaced.
+    Replace the placeholder values with your actual credentials.
 
-## License
-This project is licensed under the MIT License. See the `LICENSE` file for details. 
+6.  **Start the application:**
+    ```bash
+    npm start
+    ```
+
+    The frontend will be available at `http://localhost:3000` and the backend at `http://localhost:8080`.
+
+## API
+
+The backend exposes the following API endpoints under the `/clips` prefix:
+
+-   **`POST /upload`**: Uploads a video file.
+-   **`POST /analyze/:transcriptId`**: Analyzes a transcript and generates clips.
+-   **`GET /`**: Retrieves all transcripts.
+-   **`GET /:transcriptId`**: Retrieves a single transcript. 

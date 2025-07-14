@@ -5,14 +5,11 @@ require('dotenv').config();
 
 // Set Google credentials dynamically
 if (process.env.GCP_SERVICE_ACCOUNT_PATH) {
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(__dirname, process.env.GCP_SERVICE_ACCOUNT_PATH);
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(process.env.GCP_SERVICE_ACCOUNT_PATH);
 }
 
 const connectDB = require('./db');
-const uploadRoutes = require('./routes/upload');
-const analyzeRoutes = require('./routes/analyze');
-const transcriptsRoutes = require('./routes/transcripts');
-const clipsRoutes = require('./routes/clips');
+const mainRoutes = require('./routes/index');
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -21,10 +18,7 @@ app.use(cors());
 app.use(express.json());
 
 // Mount routes
-app.use('/clips', uploadRoutes);
-app.use('/clips', analyzeRoutes);
-app.use('/clips', transcriptsRoutes);
-app.use('/clips', clipsRoutes);
+app.use('/clips', mainRoutes);
 
 async function startServer() {
     try {

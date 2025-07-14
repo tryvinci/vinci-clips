@@ -34,29 +34,42 @@ export default function Home() {
   const handleUpload = async (file: File) => {
     setUploading(true);
     setUploadProgress(0);
-    setMessage('Uploading...');
+    setMessage('Connecting to server...');
 
     const formData = new FormData();
     formData.append('video', file);
 
+    const eventSource = new EventSource('http://localhost:8080/upload');
+
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.progress) {
+        setUploadProgress(data.progress);
+        setMessage('Uploading...');
+      }
+      if (data.status === 'complete') {
+        setMessage('Upload successful! Analyzing video...');
+        console.log(data);
+        setMessage('Analysis complete!');
+        eventSource.close();
+      }
+      if (data.error) {
+        console.error('Error uploading file:', data.error);
+        setMessage('Upload failed. Please try again.');
+        eventSource.close();
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('EventSource failed:', error);
+      setMessage('Failed to connect to server. Please try again.');
+      eventSource.close();
+    };
+    
     try {
-      const response = await axios.post('http://localhost:8080/upload', formData, {
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentCompleted);
-          }
-        },
-      });
-      setMessage('Upload successful! Analyzing video...');
-      // You can handle the analysis response here
-      console.log(response.data);
-      setMessage('Analysis complete!');
+      await axios.post('http://localhost:8080/upload', formData);
     } catch (error) {
-      console.error('Error uploading file:', error);
-      setMessage('Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
+        // Error is handled by the EventSource
     }
   };
 

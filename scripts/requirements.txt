@@ -1,6 +1,0 @@
-ffmpeg-python
-google-cloud-aiplatform
-gcsfs
-requests
-google-cloud-speech
-google-cloud-storage

@@ -1,59 +1,41 @@
 const express = require('express');
-const { ObjectId } = require('mongodb');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const connectDB = require('../db');
-
 const router = express.Router();
+const { exec } = require('child_process');
+const path = require('path');
+const Transcript = require('../models/Transcript');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-router.post('/analyze', async (req, res) => {
-    const { transcriptId } = req.body;
-
-    if (!transcriptId) {
-        return res.status(400).send('Transcript ID is required.');
-    }
-
+router.post('/:transcriptId', async (req, res) => {
     try {
-        const db = await connectDB();
-        const transcriptsCollection = db.collection('transcripts');
-        const clipsCollection = db.collection('clips');
-
-        const transcriptDoc = await transcriptsCollection.findOne({ _id: new ObjectId(transcriptId) });
-
-        if (!transcriptDoc) {
-            return res.status(404).send('Transcript not found.');
+        const transcript = await Transcript.findById(req.params.transcriptId);
+        if (!transcript) {
+            return res.status(404).json({ error: 'Transcript not found.' });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const pythonExecutable = path.resolve(__dirname, '..', '..', '..', 'scripts', 'venv', 'bin', 'python');
+        const scriptPath = path.resolve(__dirname, '..', '..', '..', 'scripts', 'analysis', 'analyze.py');
+        const analyzeCmd = `${pythonExecutable} ${scriptPath} "${transcript.transcript}"`;
 
-        const prompt = `Based on the following transcript, identify 3-5 engaging segments that would make good short video clips. For each segment, provide the exact start and end time in seconds.
+        exec(analyzeCmd, { env: { ...process.env, GEMINI_API_KEY: process.env.GEMINI_API_KEY, LLM_PROVIDER: process.env.LLM_PROVIDER, GROQ_API_KEY: process.env.GROQ_API_KEY, LLM_MODEL: process.env.LLM_MODEL } }, async (error, stdout, stderr) => {
+            if (error) {
+                console.error(`exec error: ${error}`);
+                console.error(`stderr: ${stderr}`);
+                return res.status(500).json({ error: 'Failed to analyze transcript.' });
+            }
 
-Transcript:
-"${JSON.stringify(transcriptDoc.transcription)}"
+            try {
+                const clips = JSON.parse(stdout);
+                transcript.clips = clips;
+                await transcript.save();
+                res.json(transcript);
+            } catch (e) {
+                console.error('Failed to parse analysis result or save to DB.', e);
+                res.status(500).json({ error: 'Failed to process analysis result.' });
+            }
+        });
 
-Return the result as a JSON array of objects, where each object has "start", "end", and "title" properties. For example: [{"start": 10.5, "end": 25.2, "title": "The Big Reveal"}, ...].`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        
-        // Clean the response from the LLM
-        const cleanedJsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const clips = JSON.parse(cleanedJsonString);
-
-        const clipsDocument = {
-            transcriptId: new ObjectId(transcriptId),
-            clips,
-            createdAt: new Date(),
-        };
-
-        await clipsCollection.insertOne(clipsDocument);
-
-        res.status(200).json(clipsDocument);
-    } catch (error) {
-        console.error('Error analyzing transcript:', error);
-        res.status(500).send('Failed to analyze transcript.');
+    } catch (err) {
+        console.error(`Server error: ${err}`);
+        res.status(500).json({ error: 'An unexpected server error occurred.' });
     }
 });
 
