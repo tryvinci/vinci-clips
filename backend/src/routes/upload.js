@@ -10,7 +10,10 @@ const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part } = require('
 
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ 
+    dest: 'uploads/',
+    limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB limit
+});
 
 // Ensure the uploads directory exists
 if (!fs.existsSync('uploads')) {
@@ -60,27 +63,30 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 const videoBlob = bucket.file(`videos/${req.file.originalname}`);
                 const mp3Blob = bucket.file(`audio/${req.file.originalname}.mp3`);
 
-                await bucket.upload(videoPath, { destination: videoBlob.name });
-                await bucket.upload(mp3Path, { destination: mp3Blob.name });
+                // Upload both files in parallel
+                await Promise.all([
+                    bucket.upload(videoPath, { destination: videoBlob.name }),
+                    bucket.upload(mp3Path, { destination: mp3Blob.name })
+                ]);
 
                 const [videoUrl] = await videoBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 const [mp3Url] = await mp3Blob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 
-                // Gemini API transcription
+                // Gemini API transcription using GCS URI
                 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
                 const model = genAI.getGenerativeModel({
                     model: process.env.LLM_MODEL || 'gemini-1.5-flash',
                 });
-
-                const audioData = fs.readFileSync(mp3Path);
+                
+                const audioUri = `gs://${bucket.name}/${mp3Blob.name}`;
                 const audioPart = {
-                    inlineData: {
-                        data: audioData.toString('base64'),
+                    fileData: {
                         mimeType: 'audio/mpeg',
+                        fileUri: audioUri,
                     },
                 };
 
-                const prompt = "Transcribe the provided audio into segments with start and end times. Format the output as a JSON array of objects, where each object has 'start', 'end', and 'text' fields. For example: [{'start': '00:00', 'end': '00:05', 'text': 'Hello world.'}]";
+                const prompt = "Transcribe the provided audio into segments with start and end times, and identify the speaker for each segment. Format the output as a JSON array of objects, where each object has 'start', 'end', 'text', and 'speaker' fields. For example: [{'start': '00:00', 'end': '00:05', 'text': 'Hello world.', 'speaker': 'Speaker 1'}]";
 
                 const result = await model.generateContent({
                     contents: [{
@@ -100,9 +106,10 @@ router.post('/file', upload.single('video'), async (req, res) => {
                                     start: { type: 'STRING' },
                                     end: { type: 'STRING' },
                                     text: { type: 'STRING' },
+                                    speaker: { type: 'STRING' },
                                 },
-                                required: ['start', 'end', 'text'],
-                                propertyOrdering: ['start', 'end', 'text'],
+                                required: ['start', 'end', 'text', 'speaker'],
+                                propertyOrdering: ['start', 'end', 'text', 'speaker'],
                             },
                         },
                     },

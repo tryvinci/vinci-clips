@@ -10,6 +10,7 @@ import { UploadCloud } from 'lucide-react';
 export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
   const [message, setMessage] = useState('');
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,8 +33,14 @@ export default function Home() {
   };
   
   const handleUpload = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024 * 1024) {
+        setMessage('File is too large. Please upload a file smaller than 2GB.');
+        return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
+    setProgressText('');
     setMessage('Connecting to server...');
 
     const formData = new FormData();
@@ -47,6 +54,11 @@ export default function Home() {
           if (progressEvent.total) {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setUploadProgress(percentCompleted);
+            
+            const loadedMB = (progressEvent.loaded / (1024 * 1024)).toFixed(2);
+            const totalMB = (progressEvent.total / (1024 * 1024)).toFixed(2);
+            setProgressText(`${loadedMB} MB / ${totalMB} MB`);
+
             if (percentCompleted < 100) {
               setMessage(`Uploading...`);
             } else {
@@ -84,6 +96,7 @@ export default function Home() {
           >
             <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
             <p className="mt-4 text-muted-foreground">Drag & drop a video file here, or click to select a file</p>
+            <p className="text-xs text-muted-foreground mt-2">Max file size: 2GB. Supported formats: MP4, MOV, AVI, etc.</p>
             <input
               id="file-upload"
               type="file"
@@ -95,7 +108,7 @@ export default function Home() {
           {uploading && (
             <div className="mt-4">
               <Progress value={uploadProgress} />
-              <p className="mt-2 text-center text-muted-foreground">{message} ({uploadProgress}%)</p>
+              <p className="mt-2 text-center text-muted-foreground">{message} ({progressText})</p>
             </div>
           )}
           {!uploading && message && (
