@@ -1,41 +1,77 @@
 const express = require('express');
 const router = express.Router();
-const { exec } = require('child_process');
-const path = require('path');
 const Transcript = require('../models/Transcript');
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 
 router.post('/:transcriptId', async (req, res) => {
     try {
-        const transcript = await Transcript.findById(req.params.transcriptId);
-        if (!transcript) {
+        const transcriptDoc = await Transcript.findById(req.params.transcriptId);
+        if (!transcriptDoc) {
             return res.status(404).json({ error: 'Transcript not found.' });
         }
 
-        const pythonExecutable = path.resolve(__dirname, '..', '..', '..', 'scripts', 'venv', 'bin', 'python');
-        const scriptPath = path.resolve(__dirname, '..', '..', '..', 'scripts', 'analysis', 'analyze.py');
-        const analyzeCmd = `${pythonExecutable} ${scriptPath} "${transcript.transcript}"`;
+        // Join transcript segments into a single string for analysis by the LLM
+        const fullTranscriptText = transcriptDoc.transcript.map(segment => segment.text).join(' ');
 
-        exec(analyzeCmd, { env: { ...process.env, GEMINI_API_KEY: process.env.GEMINI_API_KEY, LLM_PROVIDER: process.env.LLM_PROVIDER, GROQ_API_KEY: process.env.GROQ_API_KEY, LLM_MODEL: process.env.LLM_MODEL } }, async (error, stdout, stderr) => {
-            if (error) {
-                console.error(`exec error: ${error}`);
-                console.error(`stderr: ${stderr}`);
-                return res.status(500).json({ error: 'Failed to analyze transcript.' });
-            }
-
-            try {
-                const clips = JSON.parse(stdout);
-                transcript.clips = clips;
-                await transcript.save();
-                res.json(transcript);
-            } catch (e) {
-                console.error('Failed to parse analysis result or save to DB.', e);
-                res.status(500).json({ error: 'Failed to process analysis result.' });
-            }
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+            model: process.env.LLM_MODEL || 'gemini-1.5-flash',
         });
 
+        const prompt = `Given the following transcript, propose up to 5 video clips that are between 30 and 60 seconds long. For each clip, provide a suggested start time (MM:SS), end time (MM:SS), and a concise title. The output should be a JSON array of objects, where each object has 'start', 'end', and 'title' fields. If you cannot find suitable clips, return an empty array. Transcript: ${fullTranscriptText}`;
+
+        const result = await model.generateContent({
+            contents: [{
+                role: 'user',
+                parts: [{ text: prompt }],
+            }],
+            generationConfig: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: 'ARRAY',
+                    items: {
+                        type: 'OBJECT',
+                        properties: {
+                            start: { type: 'STRING' },
+                            end: { type: 'STRING' },
+                            title: { type: 'STRING' },
+                        },
+                        required: ['start', 'end', 'title'],
+                        propertyOrdering: ['start', 'end', 'title'],
+                    },
+                },
+            },
+            safetySettings: [
+                {
+                    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold: HarmBlockThreshold.BLOCK_NONE,
+                },
+            ],
+        });
+
+        const response = await result.response;
+        const suggestedClips = JSON.parse(response.text());
+
+        transcriptDoc.clips = suggestedClips;
+        await transcriptDoc.save();
+
+        res.json(transcriptDoc);
+
     } catch (err) {
-        console.error(`Server error: ${err}`);
-        res.status(500).json({ error: 'An unexpected server error occurred.' });
+        console.error(`Server error during analysis: ${err}`);
+        res.status(500).json({ error: 'Failed to analyze transcript and generate clips.' });
     }
 });
 

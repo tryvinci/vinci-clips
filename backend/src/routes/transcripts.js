@@ -1,15 +1,13 @@
 const express = require('express');
-const { ObjectId } = require('mongodb');
 const connectDB = require('../db');
+const Transcript = require('../models/Transcript');
 
 const router = express.Router();
 
 // Get all transcripts
-router.get('/transcripts', async (req, res) => {
+router.get('/', async (req, res) => {
     try {
-        const db = await connectDB();
-        const collection = db.collection('transcripts');
-        const transcripts = await collection.find({}).sort({ createdAt: -1 }).toArray();
+        const transcripts = await Transcript.find({}).sort({ createdAt: -1 });
         res.status(200).json(transcripts);
     } catch (error) {
         res.status(500).send({ message: 'Failed to fetch transcripts: ' + error.message });
@@ -17,11 +15,9 @@ router.get('/transcripts', async (req, res) => {
 });
 
 // Get a single transcript by ID
-router.get('/transcripts/:id', async (req, res) => {
+router.get('/:id', async (req, res) => {
     try {
-        const db = await connectDB();
-        const collection = db.collection('transcripts');
-        const transcript = await collection.findOne({ _id: new ObjectId(req.params.id) });
+        const transcript = await Transcript.findById(req.params.id);
         if (!transcript) {
             return res.status(404).send('Transcript not found');
         }

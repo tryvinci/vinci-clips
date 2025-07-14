@@ -1,11 +1,11 @@
 # Clips Development Rules
 
 ## Project Overview
-The Clips is an AI-powered video clipping tool built on Google Cloud Platform (GCP) using a REST API server (Node.js/Express), Next.js for the frontend, OpenAI Whisper for transcription, MongoDB for data storage, and Google Gemini API (Flash 2.0) for LLM-based analysis. These rules ensure consistent, high-quality development, rapid iteration, and alignment with the Product Requirements Document (@PRD.md).
+The Clips is an AI-powered video clipping tool built on Google Cloud Platform (GCP) using a REST API server (Node.js/Express), Next.js for the frontend, MongoDB for data storage, and Google Gemini API (Flash 2.0) for LLM-based analysis. These rules ensure consistent, high-quality development, rapid iteration, and alignment with the Product Requirements Document (@PRD.md).
 
 ## Code Structure and Style
 1. **File Organization**:
-   - Organize the project into clear directories: `/frontend` (Next.js), `/backend` (Express API), `/scripts` (Python for Whisper), and `/docs` (documentation).
+   - Organize the project into clear directories: `/frontend` (Next.js), `/backend` (Express API), and `/docs` (documentation).
    - Use a monorepo structure with subdirectories for each service (e.g., `/frontend/pages`, `/backend/routes`).
    - Example:
      ```
@@ -18,9 +18,6 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
          /routes
          /controllers
          /models
-       /scripts
-         /transcription
-         /clipping
        /docs
          /api
          /guides
@@ -29,7 +26,6 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 2. **Naming Conventions**:
    - Use camelCase for JavaScript variables and functions (e.g., `processVideo`, `uploadHandler`).
    - Use PascalCase for React components (e.g., `VideoUpload`, `ClipPreview`).
-   - Use snake_case for Python scripts and file names (e.g., `transcribe_video.py`).
    - Prefix API routes with `/clips` (e.g., `/clips/process-video`).
 
 4. **File Paths**:
@@ -39,7 +35,6 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 3. **Code Style**:
    - Enforce ESLint with Airbnb style guide for JavaScript/Node.js.
    - Use Prettier for consistent formatting across JavaScript, TypeScript, and CSS.
-   - For Python, adhere to PEP 8 using `flake8` and `black` for formatting.
    - Example `.eslintrc.json`:
      ```json
      {
@@ -73,7 +68,6 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 1. **Modularity**:
    - Write reusable React components in `/frontend/components` (e.g., `VideoPlayer.jsx`, `UploadDropzone.jsx`).
    - Separate backend logic into controllers, services, and models (e.g., `/backend/controllers/videoController.js`).
-   - Encapsulate Whisper and FFmpeg scripts in Python modules (e.g., `/scripts/transcription/transcribe.py`).
 
 2. **Type Safety**:
    - Use TypeScript for Next.js and Express to enforce type safety.
@@ -105,12 +99,11 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 1. **Unit Tests**:
    - Write unit tests for backend services using Jest (e.g., test `videoController` functions).
    - Test frontend components with React Testing Library.
-   - Test Python scripts with `pytest` for Whisper integration.
    - Aim for >80% code coverage.
 
 2. **Integration Tests**:
    - Test API endpoints with Supertest (e.g., `/clips/process-video`).
-   - Mock GCP services (Cloud Storage, Gemini API) using `google-cloud-sdk` stubs.
+   - Mock GCP services (Cloud Storage, Gemini API) using `@google-cloud/google-cloud-sdk` stubs or similar.
    - Example:
      ```javascript
      it('processes video and returns clips', async () => {
@@ -126,12 +119,13 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 
 ## API Integration
 1. **Gemini API (Flash 2.0)**:
-   - Use `@google-cloud/generative-ai` SDK for Gemini integration.
+   - Use `@google/generative-ai` SDK for Gemini integration.
    - Cache API responses in MongoDB to reduce costs and latency.
    - Example:
      ```javascript
-     const { GenerativeModel } = require('@google-cloud/generative-ai');
-     const model = new GenerativeModel('gemini-2.0-flash', { apiKey: process.env.GEMINI_API_KEY });
+     const { GoogleGenerativeAI } = require('@google/generative-ai');
+     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
      const result = await model.generateContent({ contents: [{ parts: [{ text: transcript }] }] });
      ```
 
@@ -154,7 +148,7 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
      const videoSchema = new mongoose.Schema({
        userId: { type: String, required: true, index: true },
        filePath: String,
-       transcript: [{ start: Number, end: Number, text: String }],
+       transcript: [{ start: String, end: String, text: String, speaker: String }],
      });
      ```
 
@@ -198,7 +192,6 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 ## Documentation
 1. **Code Documentation**:
    - Use JSDoc for JavaScript/TypeScript functions and components.
-   - Document Python scripts with docstrings following Google Python Style Guide.
    - Example:
      ```javascript
      /**
@@ -235,8 +228,7 @@ The Clips is an AI-powered video clipping tool built on Google Cloud Platform (G
 
 ## Performance and Scalability
 1. **Optimization**:
-   - Optimize Whisper transcription by using `base` model for faster processing, upgrading to `large` for high-accuracy needs.
-   - Cache Gemini API responses in MongoDB for repeated queries.
+   - Cache Gemini API responses in MongoDB to reduce costs and latency.
    - Use GCP’s auto-scaling for Cloud Run to handle traffic spikes.
 
 2. **Monitoring**:

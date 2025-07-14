@@ -17,34 +17,46 @@ if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-router.post('/', upload.single('video'), async (req, res) => {
+// Handler for establishing the SSE connection
+router.get('/', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
+    console.log('SSE connection established');
+
+    // Keep the connection open but don't do anything else
+    // The client will send the upload request to the POST endpoint
+    
+    req.on('close', () => {
+        console.log('SSE connection closed');
+        res.end();
+    });
+});
+
+
+router.post('/file', upload.single('video'), async (req, res) => {
+    // We are not using SSE here anymore for the response, 
+    // but we can send progress back through a different channel if needed in the future.
+    // For now, return the final result.
 
     const videoPath = req.file.path;
     const mp3Path = `${videoPath}.mp3`;
     const jobId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-    const sendEvent = (data) => res.write(`data: ${JSON.stringify({ jobId, ...data })}\n\n`);
-
     try {
-        sendEvent({ status: 'Converting to MP3...', progress: 10 });
         const ffmpegCmd = `ffmpeg -i ${videoPath} -vn -acodec libmp3lame -q:a 2 ${mp3Path}`;
         
         exec(ffmpegCmd, async (error) => {
             if (error) {
                 console.error(`ffmpeg error: ${error}`);
-                sendEvent({ error: 'Failed to convert video to MP3.', progress: 100 });
                 // Clean up local files even if ffmpeg fails
                 fs.unlink(videoPath, () => {});
                 fs.unlink(mp3Path, () => {});
-                return res.end();
+                return res.status(500).json({ error: 'Failed to convert video to MP3.' });
             }
 
             try {
-                sendEvent({ status: 'Uploading files to cloud...', progress: 30 });
                 const videoBlob = bucket.file(`videos/${req.file.originalname}`);
                 const mp3Blob = bucket.file(`audio/${req.file.originalname}.mp3`);
 
@@ -53,11 +65,6 @@ router.post('/', upload.single('video'), async (req, res) => {
 
                 const [videoUrl] = await videoBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 const [mp3Url] = await mp3Blob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-
-                console.log(`Job ID: ${jobId} - Video URL: ${videoUrl}`);
-                console.log(`Job ID: ${jobId} - MP3 URL: ${mp3Url}`);
-
-                sendEvent({ status: 'Transcribing...', progress: 70, videoUrl, mp3Url });
                 
                 // Gemini API transcription
                 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -111,27 +118,25 @@ router.post('/', upload.single('video'), async (req, res) => {
                     mp3Url,
                 });
                 await newTranscript.save();
-                console.log(`Job ID: ${jobId} - Transcript saved to DB: ${newTranscript._id}`);
-                sendEvent({ status: 'Transcription complete.', progress: 100, transcript: newTranscript });
+                console.log(`Transcript saved to DB: ${newTranscript._id}`);
 
                 // Cleanup local files
                 fs.unlink(videoPath, () => {});
                 fs.unlink(mp3Path, () => {});
-                res.end();
+
+                res.status(200).json({ status: 'Transcription complete.', transcript: newTranscript });
 
             } catch (apiError) {
-                console.error(`Job ID: ${jobId} - Gemini API or upload error: ${apiError}`);
-                sendEvent({ error: 'Failed to transcribe audio or upload files.', progress: 100 });
+                console.error(`Gemini API or upload error: ${apiError}`);
                 // Cleanup local files even if API fails
                 fs.unlink(videoPath, () => {});
                 fs.unlink(mp3Path, () => {});
-                res.end();
+                res.status(500).json({ error: 'Failed to transcribe audio or upload files.' });
             }
         });
     } catch (err) {
         console.error(`Server error: ${err}`);
-        sendEvent({ error: 'An unexpected server error occurred.', progress: 100 });
-        res.end();
+        res.status(500).json({ error: 'An unexpected server error occurred.' });
     }
 });
 

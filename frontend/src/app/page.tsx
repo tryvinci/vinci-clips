@@ -39,37 +39,32 @@ export default function Home() {
     const formData = new FormData();
     formData.append('video', file);
 
-    const eventSource = new EventSource('http://localhost:8080/upload');
-
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.progress) {
-        setUploadProgress(data.progress);
-        setMessage('Uploading...');
-      }
-      if (data.status === 'complete') {
-        setMessage('Upload successful! Analyzing video...');
-        console.log(data);
-        setMessage('Analysis complete!');
-        eventSource.close();
-      }
-      if (data.error) {
-        console.error('Error uploading file:', data.error);
-        setMessage('Upload failed. Please try again.');
-        eventSource.close();
-      }
-    };
-
-    eventSource.onerror = (error) => {
-      console.error('EventSource failed:', error);
-      setMessage('Failed to connect to server. Please try again.');
-      eventSource.close();
-    };
-    
+    // Remove EventSource logic for upload progress for now to simplify
     try {
-      await axios.post('http://localhost:8080/upload', formData);
+      setMessage('Uploading and processing...');
+      const response = await axios.post('http://localhost:8080/clips/upload/file', formData, {
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percentCompleted);
+            if (percentCompleted < 100) {
+              setMessage(`Uploading...`);
+            } else {
+              setMessage('Processing video... this may take a moment.');
+            }
+          }
+        },
+      });
+      setMessage('Analysis complete!');
+      console.log(response.data);
+      // You might want to redirect to the new transcript page here
+      // window.location.href = `/clips/transcripts/${response.data.transcript._id}`;
+
     } catch (error) {
-        // Error is handled by the EventSource
+      console.error('Error uploading file:', error);
+      setMessage('Upload failed. Please try again.');
+    } finally {
+        setUploading(false);
     }
   };
 
@@ -108,7 +103,7 @@ export default function Home() {
           )}
           <div className="mt-6 text-center">
             <Button asChild variant="link">
-              <a href="/transcripts">Or, view all processed videos</a>
+              <a href="/clips/transcripts">Or, view all processed videos</a>
             </Button>
           </div>
         </CardContent>

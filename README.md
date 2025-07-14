@@ -10,16 +10,16 @@ The application is built with a modern, full-stack architecture:
 -   **Backend:** A Node.js server built with Express. It handles video uploads, processing, and communication with the database and AI services.
 -   **Database:** MongoDB is used to store information about uploaded videos, transcripts, and generated clips.
 -   **AI Services:**
-    -   **Transcription:** Google's Gemini API is used to transcribe the audio from uploaded videos.
-    -   **Analysis:** The application can use either the Gemini or Groq API to analyze the transcript and suggest clips.
+    -   **Transcription:** Google's Gemini API is used directly from the Node.js backend to transcribe the audio from uploaded videos.
+    -   **Analysis:** The Node.js backend can use either the Gemini or Groq API to analyze the transcript and suggest clips.
 
 ### High-Level Flow
 
 1.  **Upload:** The user uploads a video file through the web interface.
 2.  **Conversion:** The backend server converts the video to an MP3 file using `ffmpeg`.
 3.  **Cloud Storage:** Both the original video and the MP3 are uploaded to Google Cloud Storage.
-4.  **Transcription:** The backend calls a Python script that uses the Gemini API to transcribe the MP3 file.
-5.  **Analysis:** The backend calls a second Python script that uses either the Gemini or Groq API to analyze the transcript and generate up to 5 suggested clips.
+4.  **Transcription:** The backend directly calls the Gemini API to transcribe the MP3 file.
+5.  **Analysis:** The backend directly calls either the Gemini or Groq API to analyze the transcript and generate up to 5 suggested clips.
 6.  **Database:** All data, including file URLs, the transcript, and the suggested clips, is stored in a MongoDB database.
 7.  **Display:** The frontend displays the transcript and the suggested clips to the user.
 
@@ -38,20 +38,13 @@ To get the application running locally, follow these steps:
     npm install
     ```
 
-3.  **Set up the Python virtual environment:**
-    ```bash
-    python3 -m venv scripts/venv
-    source scripts/venv/bin/activate
-    pip install -r scripts/requirements.txt
-    ```
-
-4.  **Install `ffmpeg`:**
+3.  **Install `ffmpeg`:**
     If you don't have it, you can install it with Homebrew:
     ```bash
     brew install ffmpeg
     ```
 
-5.  **Create a `.env` file:**
+4.  **Create a `.env` file:**
     Create a `.env` file in the root of the project and add the following environment variables:
 
     ```
@@ -80,7 +73,7 @@ To get the application running locally, follow these steps:
 
     Replace the placeholder values with your actual credentials.
 
-6.  **Start the application:**
+5.  **Start the application:**
     ```bash
     npm start
     ```

@@ -10,6 +10,7 @@ const TranscriptSchema = new mongoose.Schema({
             start: { type: String, required: true },
             end: { type: String, required: true },
             text: { type: String, required: true },
+            speaker: { type: String, required: false }, // Added speaker field
         },
     ],
     videoUrl: {
