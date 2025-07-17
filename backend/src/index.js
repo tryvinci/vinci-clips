@@ -8,6 +8,7 @@ if (process.env.GCP_SERVICE_ACCOUNT_PATH) {
     process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(process.env.GCP_SERVICE_ACCOUNT_PATH);
 }
 
+const logger = require('./utils/logger');
 const connectDB = require('./db');
 const mainRoutes = require('./routes/index');
 
@@ -17,6 +18,9 @@ const port = process.env.PORT || 8080;
 app.use(cors());
 app.use(express.json());
 
+// Add request logging middleware
+app.use(logger.requestMiddleware);
+
 // Mount routes
 app.use('/clips', mainRoutes);
 
@@ -24,10 +28,10 @@ async function startServer() {
     try {
         await connectDB();
         app.listen(port, () => {
-            console.log(`Server is running on port ${port}`);
+            logger.info(`Server started successfully on port ${port}`);
         });
     } catch (error) {
-        console.error('Failed to connect to the database', error);
+        logger.logError(error, { context: 'server_startup' });
         process.exit(1);
     }
 }

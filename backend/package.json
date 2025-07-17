@@ -9,16 +9,22 @@
     "test": "jest"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@google-cloud/functions": "^4.0.0",
     "@google-cloud/storage": "^7.16.0",
     "@google/generative-ai": "^0.24.1",
+    "axios": "^1.10.0",
+    "bull": "^4.16.5",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "fluent-ffmpeg": "^2.1.2",
     "mongodb": "^5.7.0",
     "mongoose": "^8.16.3",
-    "multer": "^2.0.1"
+    "multer": "^2.0.1",
+    "redis": "^5.6.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "jest": "^29.6.2",

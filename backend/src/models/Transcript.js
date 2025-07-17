@@ -51,6 +51,18 @@ const TranscriptSchema = new mongoose.Schema({
         type: String, // URL to video thumbnail
         required: false,
     },
+    importUrl: {
+        type: String, // Original URL for imported videos
+        required: false,
+    },
+    platform: {
+        type: String, // Platform source (youtube, vimeo, instagram, etc.)
+        required: false,
+    },
+    externalVideoId: {
+        type: String, // External video ID from platform
+        required: false,
+    },
     createdAt: {
         type: Date,
         default: Date.now,

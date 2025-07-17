@@ -6,12 +6,16 @@ const analyzeRoutes = require('./analyze');
 const transcriptsRoutes = require('./transcripts');
 const clipsRoutes = require('./clips');
 const fixStatusRoutes = require('./fix-status');
+const importRoutes = require('./import');
+const retryRoutes = require('./retry-transcription');
 
 // Mount specific routes. Order matters for wildcard routes.
 router.use('/upload', uploadRoutes); // Specific route for uploads
+router.use('/import', importRoutes); // Specific route for URL imports
 router.use('/transcripts', transcriptsRoutes); // Specific route for all transcripts and individual transcript by ID
 router.use('/analyze', analyzeRoutes); // Specific route for analysis
 router.use('/clips', clipsRoutes); // Specific route for clips (if any sub-routes are defined in clips.js)
+router.use('/retry', retryRoutes); // Retry failed operations
 router.use('/admin', fixStatusRoutes); // Admin routes for fixing data issues
 
 module.exports = router; 
