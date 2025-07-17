@@ -11,7 +11,7 @@ const router = express.Router();
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
-router.get('/clips/:transcriptId', async (req, res) => {
+router.get('/:transcriptId', async (req, res) => {
     const { transcriptId } = req.params;
 
     if (!transcriptId) {
@@ -41,6 +41,11 @@ router.post('/generate/:transcriptId', async (req, res) => {
     const { clipIndex } = req.body; // Optional: generate specific clip by index
 
     try {
+        // Validate transcript ID format
+        if (!transcriptId || !transcriptId.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ error: 'Invalid transcript ID format.' });
+        }
+
         const transcript = await Transcript.findById(transcriptId);
         if (!transcript) {
             return res.status(404).json({ error: 'Transcript not found.' });
@@ -48,6 +53,13 @@ router.post('/generate/:transcriptId', async (req, res) => {
 
         if (!transcript.clips || transcript.clips.length === 0) {
             return res.status(400).json({ error: 'No clips found. Run analysis first.' });
+        }
+
+        // Validate clip index if provided
+        if (clipIndex !== undefined && (clipIndex < 0 || clipIndex >= transcript.clips.length)) {
+            return res.status(400).json({ 
+                error: `Invalid clip index. Must be between 0 and ${transcript.clips.length - 1}.` 
+            });
         }
 
         const clipsToGenerate = clipIndex !== undefined ? [transcript.clips[clipIndex]] : transcript.clips;
@@ -149,6 +161,12 @@ router.post('/generate/:transcriptId', async (req, res) => {
 
             } catch (clipError) {
                 console.error(`Error generating clip ${actualIndex}:`, clipError);
+                // Return more specific error information
+                return res.status(500).json({ 
+                    error: `Failed to generate clip ${actualIndex + 1}`,
+                    details: clipError.message,
+                    clipIndex: actualIndex
+                });
             }
         }
 

@@ -112,9 +112,11 @@ export default function TranscriptDetailPage() {
                 ...prev, 
                 [clipIndex]: response.data.clips[0] // First clip in response
             }));
-        } catch (err) {
-            setError(`Failed to generate clip ${clipIndex + 1}. Please try again.`);
-            console.error(err);
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.error || `Failed to generate clip ${clipIndex + 1}. Please try again.`;
+            const errorDetails = err.response?.data?.details ? ` (${err.response.data.details})` : '';
+            setError(errorMessage + errorDetails);
+            console.error('Clip generation error:', err);
         } finally {
             setGeneratingClips(prev => ({...prev, [clipIndex]: false}));
         }
