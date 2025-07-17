@@ -6,7 +6,17 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const Transcript = require('../models/Transcript');
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold, Part } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAIFileManager } = require('@google/generative-ai/server');
+
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const serviceAccountPath = process.env.GCP_SERVICE_ACCOUNT_PATH || './src/vinci-service-account.json';
+    if (fs.existsSync(serviceAccountPath)) {
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = serviceAccountPath;
+    } else {
+        console.error(`Service account key not found at ${serviceAccountPath}`);
+    }
+}
 
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
@@ -61,7 +71,8 @@ router.post('/file', upload.single('video'), async (req, res) => {
 
             try {
                 const videoBlob = bucket.file(`videos/${req.file.originalname}`);
-                const mp3Blob = bucket.file(`audio/${req.file.originalname}.mp3`);
+                const mp3BlobName = req.file.originalname.replace(/\.mp4$/, ".mp3");
+                const mp3Blob = bucket.file(`audio/${mp3BlobName}`);
 
                 // Upload both files in parallel
                 await Promise.all([
@@ -72,19 +83,20 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 const [videoUrl] = await videoBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 const [mp3Url] = await mp3Blob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 
-                // Gemini API transcription using GCS URI
                 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+                const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+
+                // Upload the local MP3 file directly to Gemini File API
+                const uploadResult = await fileManager.uploadFile(mp3Path, {
+                    mimeType: 'audio/mpeg',
+                    displayName: mp3BlobName
+                });
+
                 const model = genAI.getGenerativeModel({
                     model: process.env.LLM_MODEL || 'gemini-1.5-flash',
                 });
                 
-                const audioUri = `gs://${bucket.name}/${mp3Blob.name}`;
-                const audioPart = {
-                    fileData: {
-                        mimeType: 'audio/mpeg',
-                        fileUri: audioUri,
-                    },
-                };
+                const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
 
                 const prompt = "Transcribe the provided audio into segments with start and end times, and identify the speaker for each segment. Format the output as a JSON array of objects, where each object has 'start', 'end', 'text', and 'speaker' fields. For example: [{'start': '00:00', 'end': '00:05', 'text': 'Hello world.', 'speaker': 'Speaker 1'}]";
 
