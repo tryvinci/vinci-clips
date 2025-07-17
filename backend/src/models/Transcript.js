@@ -15,7 +15,8 @@ const TranscriptSchema = new mongoose.Schema({
     ],
     videoUrl: {
         type: String,
-        required: true,
+        required: false,
+        default: '',
     },
     videoCloudPath: {
         type: String, // Store the actual cloud storage path for video processing
@@ -23,7 +24,8 @@ const TranscriptSchema = new mongoose.Schema({
     },
     mp3Url: {
         type: String,
-        required: true,
+        required: false,
+        default: '',
     },
     clips: [{
         title: String,
@@ -37,6 +39,16 @@ const TranscriptSchema = new mongoose.Schema({
     }],
     duration: {
         type: Number, // Duration in seconds
+        required: false,
+    },
+    status: {
+        type: String,
+        enum: ['uploading', 'converting', 'transcribing', 'completed', 'failed'],
+        default: 'uploading',
+        required: true,
+    },
+    thumbnailUrl: {
+        type: String, // URL to video thumbnail
         required: false,
     },
     createdAt: {

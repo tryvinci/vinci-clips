@@ -49,13 +49,20 @@ router.get('/', (req, res) => {
 
 
 router.post('/file', upload.single('video'), async (req, res) => {
-    // We are not using SSE here anymore for the response, 
-    // but we can send progress back through a different channel if needed in the future.
-    // For now, return the final result.
-
     const videoPath = req.file.path;
     const mp3Path = `${videoPath}.mp3`;
+    const thumbnailPath = `${videoPath}_thumbnail.jpg`;
     const jobId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+    // Create initial transcript record with uploading status
+    let transcript = new Transcript({
+        originalFilename: req.file.originalname,
+        transcript: [],
+        status: 'uploading'
+    });
+    await transcript.save();
+    
+    console.log(`Created transcript record ${transcript._id} with status: uploading`);
 
     try {
         // Get video duration first
@@ -73,14 +80,38 @@ router.post('/file', upload.single('video'), async (req, res) => {
             console.warn(`Could not get video duration: ${durationError}`);
         }
 
+        // Update status to converting
+        transcript.status = 'converting';
+        await transcript.save();
+        console.log(`Updated transcript ${transcript._id} status: converting`);
+
+        // Generate thumbnail (first frame) and convert to MP3
+        const thumbnailCmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 "${thumbnailPath}"`;
         const ffmpegCmd = `ffmpeg -i "${videoPath}" -vn -acodec libmp3lame -q:a 2 "${mp3Path}"`;
         
+        // Generate thumbnail first
+        try {
+            await new Promise((resolve, reject) => {
+                exec(thumbnailCmd, (error) => {
+                    if (error) reject(error);
+                    else resolve();
+                });
+            });
+            console.log('Thumbnail generated successfully');
+        } catch (thumbnailError) {
+            console.warn(`Thumbnail generation failed: ${thumbnailError}`);
+        }
+
         exec(ffmpegCmd, async (error) => {
             if (error) {
                 console.error(`ffmpeg error: ${error}`);
+                // Update status to failed
+                transcript.status = 'failed';
+                await transcript.save();
                 // Clean up local files even if ffmpeg fails
                 fs.unlink(videoPath, () => {});
                 fs.unlink(mp3Path, () => {});
+                fs.unlink(thumbnailPath, () => {});
                 return res.status(500).json({ error: 'Failed to convert video to MP3.' });
             }
 
@@ -89,15 +120,36 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 const videoBlob = bucket.file(videoBlobPath);
                 const mp3BlobName = req.file.originalname.replace(/\.mp4$/, ".mp3");
                 const mp3Blob = bucket.file(`audio/${mp3BlobName}`);
+                const thumbnailBlobName = req.file.originalname.replace(/\.\w+$/, "_thumbnail.jpg");
+                const thumbnailBlob = bucket.file(`thumbnails/${thumbnailBlobName}`);
 
-                // Upload both files in parallel
-                await Promise.all([
+                // Upload video, audio, and thumbnail in parallel
+                const uploadPromises = [
                     bucket.upload(videoPath, { destination: videoBlob.name }),
                     bucket.upload(mp3Path, { destination: mp3Blob.name })
-                ]);
+                ];
+                
+                // Only upload thumbnail if it exists
+                if (fs.existsSync(thumbnailPath)) {
+                    uploadPromises.push(bucket.upload(thumbnailPath, { destination: thumbnailBlob.name }));
+                }
+                
+                await Promise.all(uploadPromises);
 
                 const [videoUrl] = await videoBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
                 const [mp3Url] = await mp3Blob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+                
+                // Get thumbnail URL if it exists
+                let thumbnailUrl = null;
+                if (fs.existsSync(thumbnailPath)) {
+                    const [thumbUrl] = await thumbnailBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
+                    thumbnailUrl = thumbUrl;
+                }
+
+                // Update status to transcribing
+                transcript.status = 'transcribing';
+                await transcript.save();
+                console.log(`Updated transcript ${transcript._id} status: transcribing`);
                 
                 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
                 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
@@ -146,22 +198,23 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 const response = await result.response;
                 const transcriptContent = JSON.parse(response.text());
                 
-                const newTranscript = new Transcript({
-                    originalFilename: req.file.originalname,
-                    transcript: transcriptContent,
-                    videoUrl,
-                    videoCloudPath: videoBlobPath,
-                    mp3Url,
-                    duration: videoDuration,
-                });
-                await newTranscript.save();
-                console.log(`Transcript saved to DB: ${newTranscript._id}`);
+                // Update existing transcript with all data and mark as completed
+                transcript.transcript = transcriptContent;
+                transcript.videoUrl = videoUrl;
+                transcript.videoCloudPath = videoBlobPath;
+                transcript.mp3Url = mp3Url;
+                transcript.duration = videoDuration;
+                transcript.thumbnailUrl = thumbnailUrl;
+                transcript.status = 'completed';
+                await transcript.save();
+                console.log(`Transcript ${transcript._id} completed successfully`);
 
                 // Cleanup local files
                 fs.unlink(videoPath, () => {});
                 fs.unlink(mp3Path, () => {});
+                fs.unlink(thumbnailPath, () => {});
 
-                res.status(200).json({ status: 'Transcription complete.', transcript: newTranscript });
+                res.status(200).json({ status: 'Transcription complete.', transcript: transcript });
 
             } catch (apiError) {
                 console.error(`Gemini API or upload error: ${apiError}`);
