@@ -41,8 +41,8 @@ export default function TranscriptDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [analyzing, setAnalyzing] = useState(false);
-    const [generatingClips, setGeneratingClips] = useState(false);
-    const [generatedClips, setGeneratedClips] = useState<any[]>([]);
+    const [generatingClips, setGeneratingClips] = useState<{[key: number]: boolean}>({});
+    const [generatedClips, setGeneratedClips] = useState<{[key: number]: any}>({});
     const params = useParams();
     const router = useRouter();
     const id = params.id;
@@ -99,7 +99,7 @@ export default function TranscriptDetailPage() {
     const generateVideoClip = async (clipIndex: number) => {
         if (!transcript) return;
         
-        setGeneratingClips(true);
+        setGeneratingClips(prev => ({...prev, [clipIndex]: true}));
         setError('');
         
         try {
@@ -107,13 +107,16 @@ export default function TranscriptDetailPage() {
                 clipIndex: clipIndex
             });
             
-            // Add the new generated clip to the list
-            setGeneratedClips(prev => [...prev, ...response.data.clips]);
+            // Store the generated clip for this specific index
+            setGeneratedClips(prev => ({
+                ...prev, 
+                [clipIndex]: response.data.clips[0] // First clip in response
+            }));
         } catch (err) {
             setError(`Failed to generate clip ${clipIndex + 1}. Please try again.`);
             console.error(err);
         } finally {
-            setGeneratingClips(false);
+            setGeneratingClips(prev => ({...prev, [clipIndex]: false}));
         }
     };
 
@@ -127,7 +130,7 @@ export default function TranscriptDetailPage() {
                 clips: []
             });
             setTranscript(updatedTranscript);
-            setGeneratedClips([]);
+            setGeneratedClips({});
         } catch (err) {
             setError('Failed to clear clips. Please try again.');
             console.error(err);
@@ -193,18 +196,15 @@ export default function TranscriptDetailPage() {
                                                 <div className="font-semibold flex-1">{clip.title}</div>
                                                 <Button 
                                                     onClick={() => generateVideoClip(index)}
-                                                    disabled={generatingClips}
+                                                    disabled={generatingClips[index]}
                                                     size="sm"
                                                     className="ml-2"
                                                 >
-                                                    {generatingClips ? 'Generating...' : 'Generate Clip'}
+                                                    {generatingClips[index] ? 'Generating...' : 'Generate Clip'}
                                                 </Button>
                                             </div>
-                                            <div 
-                                                className="text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 p-2 rounded"
-                                                onClick={() => seekToClip(clip)}
-                                            >
-                                                {clip.segments ? (
+                                            <div className="text-sm text-muted-foreground">
+                                                {clip.segments && clip.segments.length > 0 ? (
                                                     // Multi-segment clip
                                                     <div>
                                                         <div className="font-medium text-xs text-primary mb-1">MIXED SEGMENTS:</div>
@@ -226,38 +226,40 @@ export default function TranscriptDetailPage() {
                                                         </div>
                                                     </div>
                                                 )}
-                                                <div className="mt-2 text-xs text-primary">
-                                                    Click here to preview in video player
-                                                </div>
+                                                <Button 
+                                                    onClick={() => seekToClip(clip)}
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="mt-2 h-6 px-2 text-xs"
+                                                >
+                                                    Preview in Player
+                                                </Button>
                                             </div>
+
+                                            {/* Generated clip video player */}
+                                            {generatedClips[index] && (
+                                                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h4 className="text-sm font-semibold text-green-800">Generated Clip</h4>
+                                                        <Button asChild size="sm" variant="outline">
+                                                            <a href={generatedClips[index].url} download target="_blank" rel="noopener noreferrer">
+                                                                Download
+                                                            </a>
+                                                        </Button>
+                                                    </div>
+                                                    <video 
+                                                        controls 
+                                                        src={generatedClips[index].url} 
+                                                        className="w-full rounded"
+                                                        style={{maxHeight: '300px'}}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
                             ) : (
                                 <p className="mt-4 text-muted-foreground">No clips analyzed yet. Click "Analyze for Clips" to get clip suggestions.</p>
-                            )}
-
-                            {generatedClips.length > 0 && (
-                                <div className="mt-8">
-                                    <h4 className="text-xl font-bold mb-4">Generated Video Clips</h4>
-                                    <div className="space-y-3">
-                                        {generatedClips.map((generatedClip, index) => (
-                                            <div key={index} className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <div className="font-semibold text-green-800">{generatedClip.title}</div>
-                                                        <div className="text-sm text-green-600">Clip {generatedClip.index + 1}</div>
-                                                    </div>
-                                                    <Button asChild size="sm">
-                                                        <a href={generatedClip.url} download target="_blank" rel="noopener noreferrer">
-                                                            Download Clip
-                                                        </a>
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
                             )}
                         </div>
                     </div>

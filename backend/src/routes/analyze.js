@@ -149,7 +149,9 @@ Transcript: ${fullTranscriptText}`;
                         validatedClips.push(processedClip);
                         console.log(`✓ Valid multi-segment clip: "${clip.title}" - ${processedSegments.length} segments, ${totalDuration}s total`);
                     } else {
-                        console.warn(`✗ Rejected multi-segment clip: "${clip.title}" - ${processedSegments.length} segments, ${totalDuration}s total`);
+                        const reason = processedSegments.length === 0 ? 'no valid segments' : 
+                                     totalDuration < 30 ? 'too short' : 'too long';
+                        console.warn(`✗ Rejected multi-segment clip: "${clip.title}" - ${processedSegments.length} segments, ${totalDuration}s total (${reason})`);
                     }
                 } else if (clip.start && clip.end) {
                     // Single segment clip
