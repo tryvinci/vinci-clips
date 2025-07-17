@@ -1,13 +1,46 @@
 {
   "name": "vinci-clips",
   "version": "1.0.0",
-  "description": "AI-powered video clipping tool",
-  "private": true,
+  "description": "🎬 Open-source AI-powered video clipping platform that automatically generates short, engaging clips from longer videos",
+  "keywords": [
+    "video",
+    "ai",
+    "clips",
+    "video-editing",
+    "content-creation",
+    "social-media",
+    "ffmpeg",
+    "gemini",
+    "nextjs",
+    "nodejs"
+  ],
+  "homepage": "https://tryvinci.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tryvinci/vinci-clips.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tryvinci/vinci-clips/issues"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": {
+    "name": "Vinci",
+    "url": "https://tryvinci.com"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
     "start": "concurrently \"npm:start:backend\" \"npm:start:frontend\"",
     "start:backend": "npm start --prefix backend",
-    "start:frontend": "npm run dev --prefix frontend"
+    "start:frontend": "npm run dev --prefix frontend",
+    "dev": "npm start",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
+    "test": "npm test --prefix backend && npm test --prefix frontend",
+    "clean": "rm -rf node_modules backend/node_modules frontend/node_modules"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

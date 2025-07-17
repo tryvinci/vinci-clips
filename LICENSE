@@ -1,0 +1,56 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+Copyright (C) 2025 Vinci
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+Additional permissions under GNU AGPL version 3 section 7:
+
+If you modify this Program, or any covered work, by linking or combining it with 
+proprietary software, the licensors of this Program grant you additional permission 
+to convey the resulting work.
+
+---
+
+## Dual License Notice
+
+This software is dual-licensed:
+
+1. **Open Source License (AGPL v3)**: This software is available under the terms of the 
+   GNU Affero General Public License v3. If you use this software in a web service or 
+   distribute it, you must make the complete source code of your entire application 
+   available under the AGPL v3.
+
+2. **Commercial License**: For organizations that want to use this software without the 
+   AGPL v3 requirements (such as keeping their source code proprietary), a commercial 
+   license is available.
+
+### When You Need a Commercial License:
+- You want to use this software in a proprietary application
+- You don't want to release your source code under AGPL v3
+- You want to offer this as a SaaS without open-sourcing your entire platform
+- You want to distribute this software as part of a commercial product
+
+For commercial licensing inquiries, please contact: licensing@tryvinci.com
+
+### AGPL v3 Requirements:
+If you choose the open source license, you must:
+- Make your complete source code available under AGPL v3
+- Include this license notice in all copies
+- Provide source code to users of your web service (if applicable)
+- Ensure any modifications are also licensed under AGPL v3
+
+For the complete terms of the GNU Affero General Public License v3, visit:
+https://www.gnu.org/licenses/agpl-3.0.html
