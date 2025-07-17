@@ -17,6 +17,10 @@ const TranscriptSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    videoCloudPath: {
+        type: String, // Store the actual cloud storage path for video processing
+        required: false,
+    },
     mp3Url: {
         type: String,
         required: true,

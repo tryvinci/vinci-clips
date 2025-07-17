@@ -27,4 +27,22 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// Update transcript (for clearing clips)
+router.put('/:id', async (req, res) => {
+    try {
+        const { clips } = req.body;
+        const transcript = await Transcript.findByIdAndUpdate(
+            req.params.id,
+            { clips: clips },
+            { new: true }
+        );
+        if (!transcript) {
+            return res.status(404).send('Transcript not found');
+        }
+        res.status(200).json(transcript);
+    } catch (error) {
+        res.status(500).send({ message: error.message });
+    }
+});
+
 module.exports = router; 

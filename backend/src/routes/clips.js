@@ -66,9 +66,12 @@ router.post('/generate/:transcriptId', async (req, res) => {
             try {
                 const outputPath = path.join(clipsDir, `${transcriptId}_clip_${actualIndex}.mp4`);
                 
-                // Download original video to temp location
+                // Download original video to temp location using stored cloud path
                 const tempVideoPath = path.join('uploads', `temp_${transcriptId}.mp4`);
-                const videoFile = bucket.file(transcript.videoUrl.split('/').pop());
+                const cloudPath = transcript.videoCloudPath || `videos/${transcript.originalFilename}`;
+                const videoFile = bucket.file(cloudPath);
+                
+                console.log(`Downloading video from cloud path: ${cloudPath}`);
                 await videoFile.download({ destination: tempVideoPath });
 
                 let ffmpegCmd;

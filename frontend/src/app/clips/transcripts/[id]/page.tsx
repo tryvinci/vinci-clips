@@ -96,20 +96,41 @@ export default function TranscriptDetailPage() {
         }
     };
 
-    const generateVideoClips = async () => {
+    const generateVideoClip = async (clipIndex: number) => {
         if (!transcript) return;
         
         setGeneratingClips(true);
         setError('');
         
         try {
-            const response = await axios.post(`http://localhost:8080/clips/clips/generate/${transcript._id}`);
-            setGeneratedClips(response.data.clips);
+            const response = await axios.post(`http://localhost:8080/clips/clips/generate/${transcript._id}`, {
+                clipIndex: clipIndex
+            });
+            
+            // Add the new generated clip to the list
+            setGeneratedClips(prev => [...prev, ...response.data.clips]);
         } catch (err) {
-            setError('Failed to generate video clips. Please try again.');
+            setError(`Failed to generate clip ${clipIndex + 1}. Please try again.`);
             console.error(err);
         } finally {
             setGeneratingClips(false);
+        }
+    };
+
+    const clearAnalyzedClips = async () => {
+        if (!transcript) return;
+        
+        try {
+            // Update transcript to remove clips
+            const updatedTranscript = { ...transcript, clips: [] };
+            await axios.put(`http://localhost:8080/clips/transcripts/${transcript._id}`, {
+                clips: []
+            });
+            setTranscript(updatedTranscript);
+            setGeneratedClips([]);
+        } catch (err) {
+            setError('Failed to clear clips. Please try again.');
+            console.error(err);
         }
     };
 
@@ -150,11 +171,12 @@ export default function TranscriptDetailPage() {
                                         {analyzing ? 'Analyzing...' : 'Analyze for Clips'}
                                     </Button>
                                     <Button 
-                                        onClick={generateVideoClips} 
-                                        disabled={generatingClips || !transcript?.clips || transcript.clips.length === 0}
-                                        className="bg-primary text-primary-foreground"
+                                        onClick={clearAnalyzedClips} 
+                                        disabled={!transcript?.clips || transcript.clips.length === 0}
+                                        variant="destructive"
+                                        size="sm"
                                     >
-                                        {generatingClips ? 'Generating Videos...' : 'Generate Video Clips'}
+                                        Clear Clips
                                     </Button>
                                 </div>
                             </div>
@@ -166,9 +188,22 @@ export default function TranscriptDetailPage() {
                             {transcript.clips && transcript.clips.length > 0 ? (
                                 <div className="mt-4 space-y-4">
                                     {transcript.clips.map((clip, index) => (
-                                        <div key={index} className="p-4 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors" onClick={() => seekToClip(clip)}>
-                                            <div className="font-semibold mb-2">{clip.title}</div>
-                                            <div className="text-sm text-muted-foreground">
+                                        <div key={index} className="p-4 bg-muted rounded-lg transition-colors">
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div className="font-semibold flex-1">{clip.title}</div>
+                                                <Button 
+                                                    onClick={() => generateVideoClip(index)}
+                                                    disabled={generatingClips}
+                                                    size="sm"
+                                                    className="ml-2"
+                                                >
+                                                    {generatingClips ? 'Generating...' : 'Generate Clip'}
+                                                </Button>
+                                            </div>
+                                            <div 
+                                                className="text-sm text-muted-foreground cursor-pointer hover:bg-muted/50 p-2 rounded"
+                                                onClick={() => seekToClip(clip)}
+                                            >
                                                 {clip.segments ? (
                                                     // Multi-segment clip
                                                     <div>
@@ -191,9 +226,9 @@ export default function TranscriptDetailPage() {
                                                         </div>
                                                     </div>
                                                 )}
-                                            </div>
-                                            <div className="mt-2 text-xs text-primary">
-                                                Click to play from start
+                                                <div className="mt-2 text-xs text-primary">
+                                                    Click here to preview in video player
+                                                </div>
                                             </div>
                                         </div>
                                     ))}

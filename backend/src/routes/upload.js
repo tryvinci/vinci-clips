@@ -85,7 +85,8 @@ router.post('/file', upload.single('video'), async (req, res) => {
             }
 
             try {
-                const videoBlob = bucket.file(`videos/${req.file.originalname}`);
+                const videoBlobPath = `videos/${req.file.originalname}`;
+                const videoBlob = bucket.file(videoBlobPath);
                 const mp3BlobName = req.file.originalname.replace(/\.mp4$/, ".mp3");
                 const mp3Blob = bucket.file(`audio/${mp3BlobName}`);
 
@@ -149,6 +150,7 @@ router.post('/file', upload.single('video'), async (req, res) => {
                     originalFilename: req.file.originalname,
                     transcript: transcriptContent,
                     videoUrl,
+                    videoCloudPath: videoBlobPath,
                     mp3Url,
                     duration: videoDuration,
                 });
