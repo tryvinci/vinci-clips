@@ -18,7 +18,27 @@ router.post('/:transcriptId', async (req, res) => {
             model: process.env.LLM_MODEL || 'gemini-1.5-flash',
         });
 
-        const prompt = `Given the following transcript, propose up to 5 video clips that are between 30 and 60 seconds long. For each clip, provide a suggested start time (MM:SS), end time (MM:SS), and a concise title. The output should be a JSON array of objects, where each object has 'start', 'end', and 'title' fields. If you cannot find suitable clips, return an empty array. Transcript: ${fullTranscriptText}`;
+        const videoDurationText = transcriptDoc.duration ? ` The video is ${Math.floor(transcriptDoc.duration / 60)}:${String(Math.floor(transcriptDoc.duration % 60)).padStart(2, '0')} long.` : '';
+        
+        const prompt = `Given the following transcript, propose up to 5 video clips that would make engaging short content.${videoDurationText} Each clip should be between 30-90 seconds total duration. You can suggest two types of clips:
+
+1. SINGLE SEGMENT clips: One continuous segment from start time to end time
+2. MULTI-SEGMENT clips: Multiple segments that when combined tell a coherent story (e.g., question at 0:15-0:25 + answer at 1:30-1:50)
+
+For single segments: provide 'start' and 'end' times in MM:SS format.
+For multi-segments: provide an array of segments in 'segments' field, each with 'start' and 'end' times.
+
+Important constraints:
+- Total duration of each clip (single or combined segments) must be 30-90 seconds
+- All timestamps must be within the video duration${videoDurationText ? ` (0:00 to ${Math.floor(transcriptDoc.duration / 60)}:${String(Math.floor(transcriptDoc.duration % 60)).padStart(2, '0')})` : ''}
+- Focus on the most engaging, complete thoughts or exchanges
+
+Output format: JSON array where each object has:
+- 'title': descriptive title
+- For single segments: 'start' and 'end' fields
+- For multi-segments: 'segments' array with objects containing 'start' and 'end'
+
+Transcript: ${fullTranscriptText}`;
 
         const result = await model.generateContent({
             contents: [{
@@ -32,12 +52,23 @@ router.post('/:transcriptId', async (req, res) => {
                     items: {
                         type: 'OBJECT',
                         properties: {
+                            title: { type: 'STRING' },
                             start: { type: 'STRING' },
                             end: { type: 'STRING' },
-                            title: { type: 'STRING' },
+                            segments: {
+                                type: 'ARRAY',
+                                items: {
+                                    type: 'OBJECT',
+                                    properties: {
+                                        start: { type: 'STRING' },
+                                        end: { type: 'STRING' },
+                                    },
+                                    required: ['start', 'end'],
+                                },
+                            },
                         },
-                        required: ['start', 'end', 'title'],
-                        propertyOrdering: ['start', 'end', 'title'],
+                        required: ['title'],
+                        propertyOrdering: ['title', 'start', 'end', 'segments'],
                     },
                 },
             },
@@ -64,7 +95,69 @@ router.post('/:transcriptId', async (req, res) => {
         const response = await result.response;
         const suggestedClips = JSON.parse(response.text());
 
-        transcriptDoc.clips = suggestedClips;
+        // Convert MM:SS time format to seconds for database storage
+        const convertTimeToSeconds = (timeString) => {
+            const [minutes, seconds] = timeString.split(':').map(Number);
+            return minutes * 60 + seconds;
+        };
+
+        // Validate and process clips
+        const validatedClips = [];
+        const videoDurationSeconds = transcriptDoc.duration || Infinity;
+
+        for (const clip of suggestedClips) {
+            try {
+                let totalDuration = 0;
+                let processedClip = { title: clip.title };
+
+                if (clip.segments && Array.isArray(clip.segments)) {
+                    // Multi-segment clip
+                    const processedSegments = [];
+                    for (const segment of clip.segments) {
+                        const startSeconds = convertTimeToSeconds(segment.start);
+                        const endSeconds = convertTimeToSeconds(segment.end);
+                        
+                        // Validate segment is within video duration
+                        if (startSeconds < 0 || endSeconds > videoDurationSeconds || startSeconds >= endSeconds) {
+                            console.warn(`Invalid segment in clip "${clip.title}": ${segment.start}-${segment.end}`);
+                            continue;
+                        }
+                        
+                        processedSegments.push({
+                            start: startSeconds,
+                            end: endSeconds
+                        });
+                        totalDuration += (endSeconds - startSeconds);
+                    }
+                    
+                    if (processedSegments.length > 0 && totalDuration >= 30 && totalDuration <= 90) {
+                        processedClip.segments = processedSegments;
+                        processedClip.totalDuration = totalDuration;
+                        validatedClips.push(processedClip);
+                    }
+                } else if (clip.start && clip.end) {
+                    // Single segment clip
+                    const startSeconds = convertTimeToSeconds(clip.start);
+                    const endSeconds = convertTimeToSeconds(clip.end);
+                    totalDuration = endSeconds - startSeconds;
+                    
+                    // Validate single segment
+                    if (startSeconds >= 0 && endSeconds <= videoDurationSeconds && 
+                        startSeconds < endSeconds && totalDuration >= 30 && totalDuration <= 90) {
+                        processedClip.start = startSeconds;
+                        processedClip.end = endSeconds;
+                        processedClip.totalDuration = totalDuration;
+                        validatedClips.push(processedClip);
+                    } else {
+                        console.warn(`Invalid single clip "${clip.title}": ${clip.start}-${clip.end} (duration: ${totalDuration}s, video: ${videoDurationSeconds}s)`);
+                    }
+                }
+            } catch (error) {
+                console.warn(`Error processing clip "${clip.title}":`, error);
+            }
+        }
+
+        transcriptDoc.clips = validatedClips;
         await transcriptDoc.save();
 
         res.json(transcriptDoc);

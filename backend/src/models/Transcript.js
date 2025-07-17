@@ -22,10 +22,19 @@ const TranscriptSchema = new mongoose.Schema({
         required: true,
     },
     clips: [{
-        start: Number,
-        end: Number,
         title: String,
+        start: Number, // For single segment clips
+        end: Number,   // For single segment clips
+        segments: [{   // For multi-segment clips
+            start: Number,
+            end: Number,
+        }],
+        totalDuration: Number, // Total duration in seconds
     }],
+    duration: {
+        type: Number, // Duration in seconds
+        required: false,
+    },
     createdAt: {
         type: Date,
         default: Date.now,

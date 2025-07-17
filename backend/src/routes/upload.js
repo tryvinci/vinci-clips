@@ -58,7 +58,22 @@ router.post('/file', upload.single('video'), async (req, res) => {
     const jobId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
     try {
-        const ffmpegCmd = `ffmpeg -i ${videoPath} -vn -acodec libmp3lame -q:a 2 ${mp3Path}`;
+        // Get video duration first
+        const durationCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
+        let videoDuration = null;
+        
+        try {
+            videoDuration = await new Promise((resolve, reject) => {
+                exec(durationCmd, (error, stdout) => {
+                    if (error) reject(error);
+                    else resolve(parseFloat(stdout.trim()));
+                });
+            });
+        } catch (durationError) {
+            console.warn(`Could not get video duration: ${durationError}`);
+        }
+
+        const ffmpegCmd = `ffmpeg -i "${videoPath}" -vn -acodec libmp3lame -q:a 2 "${mp3Path}"`;
         
         exec(ffmpegCmd, async (error) => {
             if (error) {
@@ -135,6 +150,7 @@ router.post('/file', upload.single('video'), async (req, res) => {
                     transcript: transcriptContent,
                     videoUrl,
                     mp3Url,
+                    duration: videoDuration,
                 });
                 await newTranscript.save();
                 console.log(`Transcript saved to DB: ${newTranscript._id}`);
