@@ -105,9 +105,6 @@ Transcript: ${fullTranscriptText}`;
         const response = await result.response;
         const suggestedClips = JSON.parse(response.text());
         
-        console.log(`Video duration: ${videoDurationSeconds}s (${Math.floor(videoDurationSeconds / 60)}:${String(videoDurationSeconds % 60).padStart(2, '0')})`);
-        console.log('Raw suggestions from Gemini:', JSON.stringify(suggestedClips, null, 2));
-
         // Convert MM:SS time format to seconds for database storage
         const convertTimeToSeconds = (timeString) => {
             const [minutes, seconds] = timeString.split(':').map(Number);
@@ -117,6 +114,9 @@ Transcript: ${fullTranscriptText}`;
         // Validate and process clips
         const validatedClips = [];
         const videoDurationSeconds = transcriptDoc.duration || Infinity;
+        
+        console.log(`Video duration: ${videoDurationSeconds}s (${Math.floor(videoDurationSeconds / 60)}:${String(videoDurationSeconds % 60).padStart(2, '0')})`);
+        console.log('Raw suggestions from Gemini:', JSON.stringify(suggestedClips, null, 2));
 
         for (const clip of suggestedClips) {
             try {
