@@ -178,12 +178,24 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         cropY = subjectCenterY - cropHeight * 0.4; // Position subject 40% from top
     }
     
-    // Ensure crop stays within video bounds with additional safety margin
-    const safetyBuffer = 0.02; // 2% buffer to ensure we stay well within bounds
-    if (cropX < safetyBuffer) cropX = safetyBuffer;
-    if (cropY < safetyBuffer) cropY = safetyBuffer;
-    if (cropX + cropWidth > 1 - safetyBuffer) cropX = 1 - safetyBuffer - cropWidth;
-    if (cropY + cropHeight > 1 - safetyBuffer) cropY = 1 - safetyBuffer - cropHeight;
+    // Smart bounds checking - try to keep subject centered while staying within bounds
+    const minSafetyBuffer = 0.01; // 1% minimum buffer for encoding safety
+    
+    // Check if crop exceeds bounds and adjust smartly
+    if (cropX < 0) {
+        cropX = 0;
+    } else if (cropX + cropWidth > 1) {
+        cropX = 1 - cropWidth;
+    }
+    
+    if (cropY < 0) {
+        cropY = 0;
+    } else if (cropY + cropHeight > 1) {
+        cropY = 1 - cropHeight;
+    }
+    
+    // Apply minimal safety buffer only at the final pixel level to avoid over-constraining
+    // This ensures we don't push subjects out of frame unnecessarily
     
     // Convert to pixel coordinates (ensure even numbers for video encoding)
     let pixelWidth = Math.floor(cropWidth * videoWidth / 2) * 2;
@@ -191,11 +203,20 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
     let pixelX = Math.floor(cropX * videoWidth / 2) * 2;
     let pixelY = Math.floor(cropY * videoHeight / 2) * 2;
     
-    // Additional safety checks for pixel dimensions
-    pixelWidth = Math.min(pixelWidth, videoWidth - 4); // Leave 4px margin
-    pixelHeight = Math.min(pixelHeight, videoHeight - 4); // Leave 4px margin
-    pixelX = Math.min(pixelX, videoWidth - pixelWidth);
-    pixelY = Math.min(pixelY, videoHeight - pixelHeight);
+    // Apply minimal safety at pixel level - only adjust if we're exactly at the edge
+    const pixelSafetyMargin = 2; // 2 pixel margin for encoding compatibility
+    
+    // Ensure we don't exceed video bounds with safety margin
+    if (pixelX + pixelWidth > videoWidth - pixelSafetyMargin) {
+        pixelX = videoWidth - pixelWidth - pixelSafetyMargin;
+    }
+    if (pixelY + pixelHeight > videoHeight - pixelSafetyMargin) {
+        pixelY = videoHeight - pixelHeight - pixelSafetyMargin;
+    }
+    
+    // Ensure we don't go below zero
+    pixelX = Math.max(pixelSafetyMargin, pixelX);
+    pixelY = Math.max(pixelSafetyMargin, pixelY);
     
     // Ensure minimum dimensions (for encoding compatibility)
     pixelWidth = Math.max(pixelWidth, 32);
