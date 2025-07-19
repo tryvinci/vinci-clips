@@ -5,6 +5,8 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
+import ReframeModal from '@/components/ReframeModal';
+import { Wand2 } from 'lucide-react';
 
 interface TranscriptSegment {
     start: string;
@@ -43,6 +45,8 @@ export default function TranscriptDetailPage() {
     const [analyzing, setAnalyzing] = useState(false);
     const [generatingClips, setGeneratingClips] = useState<{[key: number]: boolean}>({});
     const [generatedClips, setGeneratedClips] = useState<{[key: number]: any}>({});
+    const [isReframeModalOpen, setIsReframeModalOpen] = useState(false);
+    const [selectedClipForReframe, setSelectedClipForReframe] = useState<any>(null);
     const params = useParams();
     const router = useRouter();
     const id = params.id;
@@ -137,6 +141,17 @@ export default function TranscriptDetailPage() {
             setError('Failed to clear clips. Please try again.');
             console.error(err);
         }
+    };
+
+    const openReframeModal = (generatedClip: any, clipIndex: number) => {
+        // Pass the generated clip directly - it already contains the final video URL
+        setSelectedClipForReframe(generatedClip);
+        setIsReframeModalOpen(true);
+    };
+
+    const closeReframeModal = () => {
+        setIsReframeModalOpen(false);
+        setSelectedClipForReframe(null);
     };
 
     if (loading) {
@@ -243,11 +258,22 @@ export default function TranscriptDetailPage() {
                                                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                                                     <div className="flex items-center justify-between mb-2">
                                                         <h4 className="text-sm font-semibold text-green-800">Generated Clip</h4>
-                                                        <Button asChild size="sm" variant="outline">
-                                                            <a href={generatedClips[index].url} download target="_blank" rel="noopener noreferrer">
-                                                                Download
-                                                            </a>
-                                                        </Button>
+                                                        <div className="flex items-center gap-2">
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline"
+                                                                onClick={() => openReframeModal(generatedClips[index], index)}
+                                                                className="flex items-center gap-1"
+                                                            >
+                                                                <Wand2 className="w-3 h-3" />
+                                                                Reframe
+                                                            </Button>
+                                                            <Button asChild size="sm" variant="outline">
+                                                                <a href={generatedClips[index].url} download target="_blank" rel="noopener noreferrer">
+                                                                    Download
+                                                                </a>
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                     <video 
                                                         controls 
@@ -278,6 +304,18 @@ export default function TranscriptDetailPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Reframe Modal */}
+            {transcript && selectedClipForReframe && (
+                <ReframeModal
+                    isOpen={isReframeModalOpen}
+                    onClose={closeReframeModal}
+                    transcriptId={transcript._id}
+                    videoUrl={selectedClipForReframe.url} 
+                    originalFilename={selectedClipForReframe.filename || transcript.originalFilename}
+                    generatedClipUrl={selectedClipForReframe.url}
+                />
+            )}
         </main>
     );
 } 

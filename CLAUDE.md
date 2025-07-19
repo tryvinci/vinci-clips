@@ -129,16 +129,33 @@ GEMINI_API_KEY=<gemini-api-key>
 ## Current Development Status
 
 ### Completed Features
-- Video file upload with progress tracking
-- Video-to-MP3 conversion and cloud storage
+- Video file upload with progress tracking and status management
+- Video-to-MP3 conversion and cloud storage with thumbnail generation
 - Gemini API transcription with speaker diarization
-- Transcript storage and retrieval
-- Frontend interfaces for upload and transcript viewing
+- Transcript storage and retrieval with status tracking
+- AI-powered clip analysis and generation
+- Frontend interfaces for upload, transcript viewing, and clip management
+- Homepage with recent videos and status indicators
+- Comprehensive status management system (uploading → converting → transcribing → completed/failed)
 
 ### Next Development Priorities
-- Clip analysis endpoint (`POST /clips/analyze/:id`)
-- Frontend clip display and playback controls
-- Enhanced error handling and validation
+#### Phase 1: Core Platform Enhancements (High Priority)
+- URL video import from YouTube, Instagram, LinkedIn, Vimeo, TikTok
+- Fix clip generation routing issues and improve error handling
+- Enhanced UI/UX with responsive design and mobile optimization
+- Performance optimization with background job processing
+
+#### Phase 2: Advanced Content Features (Medium Priority)
+- Auto-reframing for social media aspect ratios (9:16, 1:1, 16:9) with AI subject detection
+- Advanced captioning system with style customization and SRT export
+- AI-generated B-roll integration for enhanced clip engagement
+- Timeline-based clip preview and editing functionality
+
+#### Phase 3: Social Media & Publishing (Lower Priority)
+- Direct publishing to social media platforms (YouTube, TikTok, Instagram, Facebook, LinkedIn, X)
+- Content scheduling calendar with optimal posting time suggestions
+- AI-generated metadata (captions, hashtags, descriptions) for social posts
+- Analytics dashboard for performance tracking and engagement metrics
 
 ## Important Notes
 
@@ -149,3 +166,4 @@ GEMINI_API_KEY=<gemini-api-key>
 - File uploads handled via multer middleware
 - When planning ensure we commit changes to git time to time to ensure progress
 - When any issues are identified which may be longer, log them as issues on git
+- in commits remove any presence of Claude including any mentions in the commit message
