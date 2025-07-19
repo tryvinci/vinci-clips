@@ -39,7 +39,7 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
     const { width: ratioW, height: ratioH } = targetRatio;
     const targetAspect = ratioW / ratioH;
     
-    logger.info('Starting crop calculation', {
+    logger.info('Starting subject-first crop calculation', {
         videoWidth,
         videoHeight,
         targetAspect,
@@ -47,28 +47,38 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         detectionsCount: detections?.length || 0
     });
     
-    // Find the center point of all detected subjects
-    // Prioritize high-confidence detections and those closer to the preview timestamp
-    let subjectCenterX = 0.5; // Default to center
-    let subjectCenterY = 0.4; // Default slightly up from center
-    let hasDetections = false;
+    // Subject-first approach: Calculate bounding box that encompasses all high-confidence subjects
+    let subjectBounds = {
+        minX: 1.0,
+        maxX: 0.0,
+        minY: 1.0,
+        maxY: 0.0,
+        isValid: false
+    };
+    
+    let validDetections = 0;
+    const MIN_CONFIDENCE = 0.5; // Increased from 0.1 for better reliability
     
     if (detections && detections.length > 0) {
-        let weightedX = 0;
-        let weightedY = 0;
-        let totalWeight = 0;
-        
         detections.forEach((detection, index) => {
-            let centerX, centerY;
-            
-            // Skip detections with invalid confidence or negative scores
-            if (!detection.confidence || detection.confidence < 0.1) {
-                logger.info(`Skipping detection ${index} with low/invalid confidence`, {
+            // Enhanced detection filtering
+            if (!detection.confidence || detection.confidence < MIN_CONFIDENCE) {
+                logger.info(`Skipping detection ${index} with low confidence`, {
                     confidence: detection.confidence,
+                    threshold: MIN_CONFIDENCE
+                });
+                return;
+            }
+            
+            // Skip detections with negative scores (often false positives)
+            if (detection.score && detection.score < 0) {
+                logger.info(`Skipping detection ${index} with negative score`, {
                     score: detection.score
                 });
                 return;
             }
+            
+            let centerX, centerY;
             
             if (detection.boundingBox) {
                 // Validate bounding box data
@@ -91,18 +101,23 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
                 // Normalize to 0-1 range
                 centerX = pixelCenterX / videoWidth;
                 centerY = pixelCenterY / videoHeight;
-                hasDetections = true;
                 
-                logger.info('Face detection normalized', {
+                logger.info('Face detection processed', {
+                    index,
                     originalPixelCenter: { x: pixelCenterX, y: pixelCenterY },
                     normalizedCenter: { x: centerX, y: centerY },
-                    videoDimensions: { width: videoWidth, height: videoHeight }
+                    confidence: detection.confidence
                 });
             } else if (detection.x !== undefined && detection.y !== undefined) {
                 // Pose points are already normalized (0-1)
                 centerX = detection.x;
                 centerY = detection.y;
-                hasDetections = true;
+                
+                logger.info('Pose detection processed', {
+                    index,
+                    normalizedCenter: { x: centerX, y: centerY },
+                    confidence: detection.confidence
+                });
             }
             
             if (centerX !== undefined && centerY !== undefined && !isNaN(centerX) && !isNaN(centerY)) {
@@ -110,133 +125,174 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
                 centerX = Math.max(0, Math.min(1, centerX));
                 centerY = Math.max(0, Math.min(1, centerY));
                 
-                // Weight by confidence - higher confidence detections have more influence
-                const weight = Math.max(detection.confidence || 0.5, 0.1);
+                // Update subject bounding box to encompass this detection
+                subjectBounds.minX = Math.min(subjectBounds.minX, centerX);
+                subjectBounds.maxX = Math.max(subjectBounds.maxX, centerX);
+                subjectBounds.minY = Math.min(subjectBounds.minY, centerY);
+                subjectBounds.maxY = Math.max(subjectBounds.maxY, centerY);
+                subjectBounds.isValid = true;
+                validDetections++;
                 
-                // Validate weight is a valid number
-                if (isNaN(weight) || weight <= 0) {
-                    logger.warn(`Invalid weight calculated for detection ${index}`, { 
-                        weight, 
-                        confidence: detection.confidence 
-                    });
-                    return;
-                }
-                
-                weightedX += centerX * weight;
-                weightedY += centerY * weight;
-                totalWeight += weight;
-                
-                logger.info('Detection processed', {
-                    type: detection.type,
-                    centerX,
-                    centerY,
-                    confidence: detection.confidence,
-                    weight,
-                    rawDetection: detection.boundingBox || { x: detection.x, y: detection.y }
+                logger.info('Detection added to subject bounds', {
+                    detection: { x: centerX, y: centerY, type: detection.type },
+                    currentBounds: subjectBounds
                 });
             }
         });
-        
-        if (totalWeight > 0 && !isNaN(totalWeight)) {
-            subjectCenterX = weightedX / totalWeight;
-            subjectCenterY = weightedY / totalWeight;
-            
-            // Validate calculated centers
-            if (isNaN(subjectCenterX) || isNaN(subjectCenterY)) {
-                logger.warn('Invalid subject center calculated, using fallback', {
-                    weightedX,
-                    weightedY,
-                    totalWeight,
-                    calculatedX: subjectCenterX,
-                    calculatedY: subjectCenterY
-                });
-                subjectCenterX = 0.5;
-                subjectCenterY = 0.4;
-            }
-            
-            logger.info('Calculated WEIGHTED subject center FROM DETECTIONS', {
-                subjectCenterX,
-                subjectCenterY,
-                totalWeight,
-                detectionCount: detections.length,
-                usingDetectedSubjects: true
-            });
-        } else {
-            logger.warn('NO VALID DETECTIONS - Using fallback center', {
-                fallbackX: subjectCenterX,
-                fallbackY: subjectCenterY,
-                usingDetectedSubjects: false
-            });
-        }
     }
     
-    // Calculate crop dimensions to fit target aspect ratio
-    // Determine which dimension to constrain based on video aspect vs target aspect
-    const videoAspect = videoWidth / videoHeight;
+    // Calculate subject area properties
+    let subjectCenterX, subjectCenterY, subjectWidth, subjectHeight;
+    
+    if (subjectBounds.isValid && validDetections > 0) {
+        subjectWidth = subjectBounds.maxX - subjectBounds.minX;
+        subjectHeight = subjectBounds.maxY - subjectBounds.minY;
+        subjectCenterX = subjectBounds.minX + subjectWidth / 2;
+        subjectCenterY = subjectBounds.minY + subjectHeight / 2;
+        
+        logger.info('Calculated subject group bounding box', {
+            subjectBounds,
+            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
+            subjectDimensions: { width: subjectWidth, height: subjectHeight },
+            validDetections
+        });
+    } else {
+        // Fallback to center when no valid detections
+        subjectCenterX = 0.5;
+        subjectCenterY = 0.5;
+        subjectWidth = 0.1; // Small default area
+        subjectHeight = 0.1;
+        
+        logger.warn('No valid detections - using fallback center', {
+            fallbackCenter: { x: subjectCenterX, y: subjectCenterY },
+            fallbackDimensions: { width: subjectWidth, height: subjectHeight }
+        });
+    }
+    
+    // Subject-aware crop sizing: Build crop around the subject area, not the video
+    const SUBJECT_PADDING = 0.3; // 30% padding around subject bounds for breathing room
+    
+    // Calculate required crop dimensions based on subject area + padding
+    const paddedSubjectWidth = Math.max(subjectWidth * (1 + SUBJECT_PADDING), 0.1); // Minimum 10% width
+    const paddedSubjectHeight = Math.max(subjectHeight * (1 + SUBJECT_PADDING), 0.1); // Minimum 10% height
     
     let cropWidth, cropHeight;
     
-    // Use maximum possible dimensions while maintaining aspect ratio
-    // Only apply minimal safety margin (2%) for final positioning
-    const maxSafeRatio = 0.98;
+    // Determine crop dimensions based on subject needs and target aspect ratio
+    const subjectAspect = paddedSubjectWidth / paddedSubjectHeight;
     
-    if (videoAspect > targetAspect) {
-        // Video is wider than target - constrain by height to maximize crop size
-        cropHeight = maxSafeRatio;
-        cropWidth = cropHeight * targetAspect;
-        
-        // If calculated width exceeds video bounds, constrain by width instead
-        if (cropWidth > maxSafeRatio) {
-            cropWidth = maxSafeRatio;
-            cropHeight = cropWidth / targetAspect;
-        }
-    } else {
-        // Video is taller than target or same aspect - constrain by width
-        cropWidth = maxSafeRatio;
+    if (subjectAspect > targetAspect) {
+        // Subject area is wider than target aspect - width is the limiting dimension
+        cropWidth = paddedSubjectWidth;
         cropHeight = cropWidth / targetAspect;
-        
-        // If calculated height exceeds video bounds, constrain by height instead
-        if (cropHeight > maxSafeRatio) {
-            cropHeight = maxSafeRatio;
-            cropWidth = cropHeight * targetAspect;
-        }
+    } else {
+        // Subject area is taller than target aspect - height is the limiting dimension
+        cropHeight = paddedSubjectHeight;
+        cropWidth = cropHeight * targetAspect;
     }
     
-    logger.info('Crop dimensions calculated', {
-        videoAspect,
+    logger.info('Subject-aware crop dimensions calculated', {
+        subjectDimensions: { width: subjectWidth, height: subjectHeight },
+        paddedDimensions: { width: paddedSubjectWidth, height: paddedSubjectHeight },
+        subjectAspect,
         targetAspect,
-        cropWidth,
-        cropHeight,
-        actualCropAspect: cropWidth / cropHeight
+        cropDimensions: { width: cropWidth, height: cropHeight },
+        padding: SUBJECT_PADDING
     });
     
-    // Position the crop centered on the subject
+    // Initial positioning: Center crop on subject center (NO HARDCODED RULES)
     let cropX = subjectCenterX - cropWidth / 2;
     let cropY = subjectCenterY - cropHeight / 2;
     
-    // For vertical videos (like TikTok), position subject slightly higher in frame
-    if (targetAspect < 1) {
-        cropY = subjectCenterY - cropHeight * 0.4; // Position subject 40% from top
+    logger.info('Initial crop positioning', {
+        subjectCenter: { x: subjectCenterX, y: subjectCenterY },
+        initialCropPosition: { x: cropX, y: cropY },
+        cropSize: { width: cropWidth, height: cropHeight }
+    });
+    
+    // Intelligent bounds correction: Pan and scan logic
+    let boundsAdjustmentNeeded = false;
+    
+    if (cropX < 0 || cropY < 0 || cropX + cropWidth > 1 || cropY + cropHeight > 1) {
+        boundsAdjustmentNeeded = true;
+        logger.info('Crop exceeds video bounds - applying intelligent correction', {
+            originalPosition: { x: cropX, y: cropY },
+            cropSize: { width: cropWidth, height: cropHeight },
+            exceedsLeft: cropX < 0,
+            exceedsTop: cropY < 0,
+            exceedsRight: cropX + cropWidth > 1,
+            exceedsBottom: cropY + cropHeight > 1
+        });
+        
+        // Step 1: Try panning (shifting crop position without changing size)
+        if (cropX < 0) {
+            cropX = 0;
+        }
+        if (cropY < 0) {
+            cropY = 0;
+        }
+        if (cropX + cropWidth > 1) {
+            cropX = 1 - cropWidth;
+        }
+        if (cropY + cropHeight > 1) {
+            cropY = 1 - cropHeight;
+        }
+        
+        logger.info('Applied panning correction', {
+            pannedPosition: { x: cropX, y: cropY }
+        });
+        
+        // Step 2: Verify subject is still contained after panning
+        const subjectStillContained = (
+            subjectBounds.minX >= cropX &&
+            subjectBounds.maxX <= cropX + cropWidth &&
+            subjectBounds.minY >= cropY &&
+            subjectBounds.maxY <= cropY + cropHeight
+        );
+        
+        if (!subjectStillContained) {
+            logger.warn('Subject not contained after panning - applying zoom-out correction');
+            
+            // Step 3: Zoom out (reduce crop size) to ensure subject fits
+            const requiredXRadius = Math.max(
+                subjectCenterX - subjectBounds.minX, 
+                subjectBounds.maxX - subjectCenterX
+            );
+            const requiredYRadius = Math.max(
+                subjectCenterY - subjectBounds.minY, 
+                subjectBounds.maxY - subjectCenterY
+            );
+            
+            // Calculate minimum crop size needed to contain subject
+            const minCropWidth = 2 * requiredXRadius * (1 + SUBJECT_PADDING);
+            const minCropHeight = 2 * requiredYRadius * (1 + SUBJECT_PADDING);
+            
+            // Apply aspect ratio constraint to minimum size
+            if (minCropWidth / minCropHeight > targetAspect) {
+                cropWidth = minCropWidth;
+                cropHeight = cropWidth / targetAspect;
+            } else {
+                cropHeight = minCropHeight;
+                cropWidth = cropHeight * targetAspect;
+            }
+            
+            // Re-center on subject with new size
+            cropX = subjectCenterX - cropWidth / 2;
+            cropY = subjectCenterY - cropHeight / 2;
+            
+            // Final bounds adjustment for zoomed-out crop
+            if (cropX < 0) cropX = 0;
+            if (cropY < 0) cropY = 0;
+            if (cropX + cropWidth > 1) cropX = 1 - cropWidth;
+            if (cropY + cropHeight > 1) cropY = 1 - cropHeight;
+            
+            logger.info('Applied zoom-out correction', {
+                minSubjectRequirements: { width: minCropWidth, height: minCropHeight },
+                finalCropSize: { width: cropWidth, height: cropHeight },
+                finalPosition: { x: cropX, y: cropY }
+            });
+        }
     }
-    
-    // Smart bounds checking - try to keep subject centered while staying within bounds
-    const minSafetyBuffer = 0.01; // 1% minimum buffer for encoding safety
-    
-    // Check if crop exceeds bounds and adjust smartly
-    if (cropX < 0) {
-        cropX = 0;
-    } else if (cropX + cropWidth > 1) {
-        cropX = 1 - cropWidth;
-    }
-    
-    if (cropY < 0) {
-        cropY = 0;
-    } else if (cropY + cropHeight > 1) {
-        cropY = 1 - cropHeight;
-    }
-    
-    // Apply minimal safety buffer only at the final pixel level to avoid over-constraining
-    // This ensures we don't push subjects out of frame unnecessarily
     
     // Convert to pixel coordinates (ensure even numbers for video encoding)
     let pixelWidth = Math.floor(cropWidth * videoWidth / 2) * 2;
@@ -244,7 +300,7 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
     let pixelX = Math.floor(cropX * videoWidth / 2) * 2;
     let pixelY = Math.floor(cropY * videoHeight / 2) * 2;
     
-    // Apply minimal safety at pixel level - only adjust if we're exactly at the edge
+    // Apply minimal safety margin only if absolutely necessary
     const pixelSafetyMargin = 2; // 2 pixel margin for encoding compatibility
     
     // Ensure we don't exceed video bounds with safety margin
@@ -255,11 +311,11 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         pixelY = videoHeight - pixelHeight - pixelSafetyMargin;
     }
     
-    // Ensure we don't go below zero
+    // Ensure we don't go below safety margin
     pixelX = Math.max(pixelSafetyMargin, pixelX);
     pixelY = Math.max(pixelSafetyMargin, pixelY);
     
-    // Ensure minimum dimensions (for encoding compatibility)
+    // Ensure minimum dimensions for encoding compatibility
     pixelWidth = Math.max(pixelWidth, 32);
     pixelHeight = Math.max(pixelHeight, 32);
     
@@ -274,24 +330,37 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         });
         
         if (pixelAspect > targetAspect) {
-            // Too wide, reduce width
             pixelWidth = Math.floor(pixelHeight * targetAspect / 2) * 2;
         } else {
-            // Too tall, reduce height
             pixelHeight = Math.floor(pixelWidth / targetAspect / 2) * 2;
         }
     }
     
-    // Final validation - ensure coordinates are within video bounds
+    // Final bounds validation
     pixelX = Math.max(0, Math.min(pixelX, videoWidth - pixelWidth));
     pixelY = Math.max(0, Math.min(pixelY, videoHeight - pixelHeight));
     
-    logger.info('Final pixel dimensions', {
-        pixelWidth,
-        pixelHeight,
-        finalAspect: pixelWidth / pixelHeight,
-        targetAspect
-    });
+    // Final validation: Verify subject bounds are contained in final crop
+    const subjectPixelBounds = {
+        minX: Math.round(subjectBounds.minX * videoWidth),
+        maxX: Math.round(subjectBounds.maxX * videoWidth),
+        minY: Math.round(subjectBounds.minY * videoHeight),
+        maxY: Math.round(subjectBounds.maxY * videoHeight)
+    };
+    
+    const cropPixelBounds = {
+        left: pixelX,
+        right: pixelX + pixelWidth,
+        top: pixelY,
+        bottom: pixelY + pixelHeight
+    };
+    
+    const subjectFullyContained = subjectBounds.isValid ? (
+        subjectPixelBounds.minX >= cropPixelBounds.left &&
+        subjectPixelBounds.maxX <= cropPixelBounds.right &&
+        subjectPixelBounds.minY >= cropPixelBounds.top &&
+        subjectPixelBounds.maxY <= cropPixelBounds.bottom
+    ) : true; // If no detections, consider it contained
     
     const result = {
         width: pixelWidth,
@@ -303,38 +372,32 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         zoomFactor: 1.0 / Math.max(cropWidth, cropHeight)
     };
     
-    // Verify that the subject center is actually within the crop area
-    const subjectPixelX = Math.round(subjectCenterX * videoWidth);
-    const subjectPixelY = Math.round(subjectCenterY * videoHeight);
-    const isSubjectInCrop = (
-        subjectPixelX >= pixelX && 
-        subjectPixelX <= pixelX + pixelWidth &&
-        subjectPixelY >= pixelY && 
-        subjectPixelY <= pixelY + pixelHeight
-    );
-    
-    logger.info('Final crop calculation result', {
-        videoDimensions,
+    logger.info('Subject-first crop calculation completed', {
+        algorithm: 'subject-first',
+        videoDimensions: { width: videoWidth, height: videoHeight },
         targetAspect,
-        subjectCenter: { 
-            normalized: { x: subjectCenterX, y: subjectCenterY },
-            pixel: { x: subjectPixelX, y: subjectPixelY }
+        subjectAnalysis: {
+            validDetections,
+            subjectBounds: subjectBounds.isValid ? subjectBounds : 'fallback',
+            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
+            subjectDimensions: { width: subjectWidth, height: subjectHeight }
         },
-        cropDimensions: { width: cropWidth, height: cropHeight },
-        cropPosition: { 
-            normalized: { x: cropX, y: cropY },
-            pixel: { x: pixelX, y: pixelY }
+        cropAnalysis: {
+            normalizedCrop: { x: cropX, y: cropY, width: cropWidth, height: cropHeight },
+            pixelCrop: { x: pixelX, y: pixelY, width: pixelWidth, height: pixelHeight },
+            boundsAdjustmentApplied: boundsAdjustmentNeeded,
+            subjectFullyContained
         },
-        cropBounds: {
-            left: pixelX,
-            right: pixelX + pixelWidth,
-            top: pixelY,
-            bottom: pixelY + pixelHeight
-        },
-        subjectInCrop: isSubjectInCrop,
-        pixelResult: result,
-        hasDetections
+        result
     });
+    
+    if (!subjectFullyContained && subjectBounds.isValid) {
+        logger.warn('ATTENTION: Subject may not be fully contained in final crop', {
+            subjectPixelBounds,
+            cropPixelBounds,
+            recommendation: 'Consider increasing SUBJECT_PADDING or review detection accuracy'
+        });
+    }
     
     return result;
 }
