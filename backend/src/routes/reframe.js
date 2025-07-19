@@ -178,11 +178,12 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         cropY = subjectCenterY - cropHeight * 0.4; // Position subject 40% from top
     }
     
-    // Ensure crop stays within video bounds
-    if (cropX < 0) cropX = 0;
-    if (cropY < 0) cropY = 0;
-    if (cropX + cropWidth > 1) cropX = 1 - cropWidth;
-    if (cropY + cropHeight > 1) cropY = 1 - cropHeight;
+    // Ensure crop stays within video bounds with additional safety margin
+    const safetyBuffer = 0.02; // 2% buffer to ensure we stay well within bounds
+    if (cropX < safetyBuffer) cropX = safetyBuffer;
+    if (cropY < safetyBuffer) cropY = safetyBuffer;
+    if (cropX + cropWidth > 1 - safetyBuffer) cropX = 1 - safetyBuffer - cropWidth;
+    if (cropY + cropHeight > 1 - safetyBuffer) cropY = 1 - safetyBuffer - cropHeight;
     
     // Convert to pixel coordinates (ensure even numbers for video encoding)
     let pixelWidth = Math.floor(cropWidth * videoWidth / 2) * 2;
@@ -289,10 +290,10 @@ function generatePreviewFrame(videoPath, cropParams, timestamp = 5) {
             const videoHeight = videoStream.height;
             
             // Validate crop parameters against video dimensions with safety margin
-            const safetyMargin = 2; // 2 pixel safety margin
+            const safetyMargin = 4; // 4 pixel safety margin for better compatibility
             if (cropParams.x + cropParams.width > videoWidth - safetyMargin || 
                 cropParams.y + cropParams.height > videoHeight - safetyMargin ||
-                cropParams.x < 0 || cropParams.y < 0) {
+                cropParams.x < safetyMargin || cropParams.y < safetyMargin) {
                 
                 logger.logError(new Error('Crop parameters exceed video dimensions'), {
                     context: 'crop_validation',
@@ -509,7 +510,11 @@ router.post('/analyze', upload.single('video'), async (req, res) => {
         });
         
     } catch (error) {
-        logger.logError(error, { context: 'reframe_analysis', transcriptId, targetPlatform });
+        logger.logError(error, { 
+            context: 'reframe_analysis', 
+            transcriptId: req.body.transcriptId, 
+            targetPlatform: req.body.targetPlatform 
+        });
         res.status(500).json({
             error: 'Failed to analyze video for reframing',
             details: error.message,
