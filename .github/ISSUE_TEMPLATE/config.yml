@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/tryvinci/vinci-clips/blob/main/README.md
+    about: Check our comprehensive documentation for setup and usage guides
+  - name: 💬 Discussions
+    url: https://github.com/tryvinci/vinci-clips/discussions
+    about: Ask questions, share ideas, and discuss features with the community
+  - name: 🔒 Security Issues
+    url: https://github.com/tryvinci/vinci-clips/security/advisories/new
+    about: Report security vulnerabilities privately
+  - name: 📋 Project Roadmap
+    url: https://github.com/tryvinci/vinci-clips/projects
+    about: View our development roadmap and planned features
