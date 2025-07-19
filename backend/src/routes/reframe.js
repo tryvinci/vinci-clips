@@ -150,6 +150,27 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         subjectCenterX = subjectBounds.minX + subjectWidth / 2;
         subjectCenterY = subjectBounds.minY + subjectHeight / 2;
         
+        // Handle very small subject areas (single points or tightly clustered detections)
+        const MIN_SUBJECT_SIZE = 0.05; // 5% minimum subject area
+        if (subjectWidth < MIN_SUBJECT_SIZE || subjectHeight < MIN_SUBJECT_SIZE) {
+            logger.info('Very small subject area detected, expanding bounds', {
+                originalBounds: { width: subjectWidth, height: subjectHeight },
+                minSize: MIN_SUBJECT_SIZE
+            });
+            
+            // Expand around the center to create a reasonable subject area
+            const expandWidth = Math.max(MIN_SUBJECT_SIZE, subjectWidth) / 2;
+            const expandHeight = Math.max(MIN_SUBJECT_SIZE, subjectHeight) / 2;
+            
+            subjectBounds.minX = Math.max(0, subjectCenterX - expandWidth);
+            subjectBounds.maxX = Math.min(1, subjectCenterX + expandWidth);
+            subjectBounds.minY = Math.max(0, subjectCenterY - expandHeight);
+            subjectBounds.maxY = Math.min(1, subjectCenterY + expandHeight);
+            
+            subjectWidth = subjectBounds.maxX - subjectBounds.minX;
+            subjectHeight = subjectBounds.maxY - subjectBounds.minY;
+        }
+        
         logger.info('Calculated subject group bounding box', {
             subjectBounds,
             subjectCenter: { x: subjectCenterX, y: subjectCenterY },
@@ -169,130 +190,81 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         });
     }
     
-    // Subject-aware crop sizing: Build crop around the subject area, not the video
-    const SUBJECT_PADDING = 0.3; // 30% padding around subject bounds for breathing room
+    // Maximum zoom approach: Calculate largest possible crop that keeps subjects centered
+    // Start with maximum possible crop for the target aspect ratio
+    const videoAspect = videoWidth / videoHeight;
+    const MAX_CROP_RATIO = 0.98; // Use 98% of video dimensions for maximum zoom
     
-    // Calculate required crop dimensions based on subject area + padding
-    const paddedSubjectWidth = Math.max(subjectWidth * (1 + SUBJECT_PADDING), 0.1); // Minimum 10% width
-    const paddedSubjectHeight = Math.max(subjectHeight * (1 + SUBJECT_PADDING), 0.1); // Minimum 10% height
+    let maxPossibleWidth, maxPossibleHeight;
     
-    let cropWidth, cropHeight;
-    
-    // Determine crop dimensions based on subject needs and target aspect ratio
-    const subjectAspect = paddedSubjectWidth / paddedSubjectHeight;
-    
-    if (subjectAspect > targetAspect) {
-        // Subject area is wider than target aspect - width is the limiting dimension
-        cropWidth = paddedSubjectWidth;
-        cropHeight = cropWidth / targetAspect;
+    if (videoAspect > targetAspect) {
+        // Video is wider than target - height is limiting
+        maxPossibleHeight = MAX_CROP_RATIO;
+        maxPossibleWidth = maxPossibleHeight * targetAspect;
     } else {
-        // Subject area is taller than target aspect - height is the limiting dimension
-        cropHeight = paddedSubjectHeight;
-        cropWidth = cropHeight * targetAspect;
+        // Video is taller than target - width is limiting
+        maxPossibleWidth = MAX_CROP_RATIO;
+        maxPossibleHeight = maxPossibleWidth / targetAspect;
     }
     
-    logger.info('Subject-aware crop dimensions calculated', {
-        subjectDimensions: { width: subjectWidth, height: subjectHeight },
-        paddedDimensions: { width: paddedSubjectWidth, height: paddedSubjectHeight },
-        subjectAspect,
+    logger.info('Maximum possible crop calculated', {
+        videoAspect,
         targetAspect,
-        cropDimensions: { width: cropWidth, height: cropHeight },
-        padding: SUBJECT_PADDING
+        maxPossibleCrop: { width: maxPossibleWidth, height: maxPossibleHeight }
     });
     
-    // Initial positioning: Center crop on subject center (NO HARDCODED RULES)
+    // Now determine if we can use the maximum crop while keeping subjects centered
+    // Check if subjects would still be contained with maximum crop centered on subject center
+    let cropWidth = maxPossibleWidth;
+    let cropHeight = maxPossibleHeight;
+    
+    // Calculate where the max crop would be positioned if centered on subjects
+    let idealCropX = subjectCenterX - cropWidth / 2;
+    let idealCropY = subjectCenterY - cropHeight / 2;
+    
+    // Check if this positioning keeps the crop within video bounds
+    if (idealCropX < 0 || idealCropY < 0 || 
+        idealCropX + cropWidth > 1 || idealCropY + cropHeight > 1) {
+        
+        logger.info('Maximum crop cannot be centered on subjects, calculating constrained crop');
+        
+        // Calculate the maximum crop size that can be centered on the subject
+        // Find the limiting dimension based on subject position
+        const maxXRadius = Math.min(subjectCenterX, 1 - subjectCenterX);
+        const maxYRadius = Math.min(subjectCenterY, 1 - subjectCenterY);
+        
+        // Calculate maximum crop that fits within these radii
+        const maxCenteredWidth = 2 * maxXRadius;
+        const maxCenteredHeight = 2 * maxYRadius;
+        
+        // Apply aspect ratio constraint to get final dimensions
+        if (maxCenteredWidth / maxCenteredHeight > targetAspect) {
+            // Width is not the limiting factor, use height
+            cropHeight = maxCenteredHeight;
+            cropWidth = cropHeight * targetAspect;
+        } else {
+            // Height is not the limiting factor, use width
+            cropWidth = maxCenteredWidth;
+            cropHeight = cropWidth / targetAspect;
+        }
+        
+        logger.info('Calculated constrained crop for subject centering', {
+            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
+            maxRadii: { x: maxXRadius, y: maxYRadius },
+            constrainedCrop: { width: cropWidth, height: cropHeight }
+        });
+    }
+    
+    // Perfect centering: Position crop exactly centered on subject center
     let cropX = subjectCenterX - cropWidth / 2;
     let cropY = subjectCenterY - cropHeight / 2;
     
-    logger.info('Initial crop positioning', {
+    logger.info('Maximum zoom crop positioned for perfect subject centering', {
         subjectCenter: { x: subjectCenterX, y: subjectCenterY },
-        initialCropPosition: { x: cropX, y: cropY },
-        cropSize: { width: cropWidth, height: cropHeight }
+        cropDimensions: { width: cropWidth, height: cropHeight },
+        cropPosition: { x: cropX, y: cropY },
+        zoomLevel: `${Math.round((1 / Math.max(cropWidth, cropHeight)) * 100)}%`
     });
-    
-    // Intelligent bounds correction: Pan and scan logic
-    let boundsAdjustmentNeeded = false;
-    
-    if (cropX < 0 || cropY < 0 || cropX + cropWidth > 1 || cropY + cropHeight > 1) {
-        boundsAdjustmentNeeded = true;
-        logger.info('Crop exceeds video bounds - applying intelligent correction', {
-            originalPosition: { x: cropX, y: cropY },
-            cropSize: { width: cropWidth, height: cropHeight },
-            exceedsLeft: cropX < 0,
-            exceedsTop: cropY < 0,
-            exceedsRight: cropX + cropWidth > 1,
-            exceedsBottom: cropY + cropHeight > 1
-        });
-        
-        // Step 1: Try panning (shifting crop position without changing size)
-        if (cropX < 0) {
-            cropX = 0;
-        }
-        if (cropY < 0) {
-            cropY = 0;
-        }
-        if (cropX + cropWidth > 1) {
-            cropX = 1 - cropWidth;
-        }
-        if (cropY + cropHeight > 1) {
-            cropY = 1 - cropHeight;
-        }
-        
-        logger.info('Applied panning correction', {
-            pannedPosition: { x: cropX, y: cropY }
-        });
-        
-        // Step 2: Verify subject is still contained after panning
-        const subjectStillContained = (
-            subjectBounds.minX >= cropX &&
-            subjectBounds.maxX <= cropX + cropWidth &&
-            subjectBounds.minY >= cropY &&
-            subjectBounds.maxY <= cropY + cropHeight
-        );
-        
-        if (!subjectStillContained) {
-            logger.warn('Subject not contained after panning - applying zoom-out correction');
-            
-            // Step 3: Zoom out (reduce crop size) to ensure subject fits
-            const requiredXRadius = Math.max(
-                subjectCenterX - subjectBounds.minX, 
-                subjectBounds.maxX - subjectCenterX
-            );
-            const requiredYRadius = Math.max(
-                subjectCenterY - subjectBounds.minY, 
-                subjectBounds.maxY - subjectCenterY
-            );
-            
-            // Calculate minimum crop size needed to contain subject
-            const minCropWidth = 2 * requiredXRadius * (1 + SUBJECT_PADDING);
-            const minCropHeight = 2 * requiredYRadius * (1 + SUBJECT_PADDING);
-            
-            // Apply aspect ratio constraint to minimum size
-            if (minCropWidth / minCropHeight > targetAspect) {
-                cropWidth = minCropWidth;
-                cropHeight = cropWidth / targetAspect;
-            } else {
-                cropHeight = minCropHeight;
-                cropWidth = cropHeight * targetAspect;
-            }
-            
-            // Re-center on subject with new size
-            cropX = subjectCenterX - cropWidth / 2;
-            cropY = subjectCenterY - cropHeight / 2;
-            
-            // Final bounds adjustment for zoomed-out crop
-            if (cropX < 0) cropX = 0;
-            if (cropY < 0) cropY = 0;
-            if (cropX + cropWidth > 1) cropX = 1 - cropWidth;
-            if (cropY + cropHeight > 1) cropY = 1 - cropHeight;
-            
-            logger.info('Applied zoom-out correction', {
-                minSubjectRequirements: { width: minCropWidth, height: minCropHeight },
-                finalCropSize: { width: cropWidth, height: cropHeight },
-                finalPosition: { x: cropX, y: cropY }
-            });
-        }
-    }
     
     // Convert to pixel coordinates (ensure even numbers for video encoding)
     let pixelWidth = Math.floor(cropWidth * videoWidth / 2) * 2;
