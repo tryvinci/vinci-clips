@@ -58,13 +58,35 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         let weightedY = 0;
         let totalWeight = 0;
         
-        detections.forEach(detection => {
+        detections.forEach((detection, index) => {
             let centerX, centerY;
             
+            // Skip detections with invalid confidence or negative scores
+            if (!detection.confidence || detection.confidence < 0.1) {
+                logger.info(`Skipping detection ${index} with low/invalid confidence`, {
+                    confidence: detection.confidence,
+                    score: detection.score
+                });
+                return;
+            }
+            
             if (detection.boundingBox) {
+                // Validate bounding box data
+                const bbox = detection.boundingBox;
+                if (bbox.left < 0 || bbox.top < 0 || bbox.width <= 0 || bbox.height <= 0) {
+                    logger.warn(`Invalid bounding box for detection ${index}`, { bbox });
+                    return;
+                }
+                
                 // Face detection bounding box is in PIXEL coordinates - need to normalize
-                const pixelCenterX = detection.boundingBox.left + detection.boundingBox.width / 2;
-                const pixelCenterY = detection.boundingBox.top + detection.boundingBox.height / 2;
+                const pixelCenterX = bbox.left + bbox.width / 2;
+                const pixelCenterY = bbox.top + bbox.height / 2;
+                
+                // Validate video dimensions are available
+                if (!videoWidth || !videoHeight || videoWidth <= 0 || videoHeight <= 0) {
+                    logger.error('Invalid video dimensions for normalization', { videoWidth, videoHeight });
+                    return;
+                }
                 
                 // Normalize to 0-1 range
                 centerX = pixelCenterX / videoWidth;
@@ -83,13 +105,22 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
                 hasDetections = true;
             }
             
-            if (centerX !== undefined && centerY !== undefined) {
+            if (centerX !== undefined && centerY !== undefined && !isNaN(centerX) && !isNaN(centerY)) {
                 // Ensure coordinates are valid
                 centerX = Math.max(0, Math.min(1, centerX));
                 centerY = Math.max(0, Math.min(1, centerY));
                 
                 // Weight by confidence - higher confidence detections have more influence
                 const weight = Math.max(detection.confidence || 0.5, 0.1);
+                
+                // Validate weight is a valid number
+                if (isNaN(weight) || weight <= 0) {
+                    logger.warn(`Invalid weight calculated for detection ${index}`, { 
+                        weight, 
+                        confidence: detection.confidence 
+                    });
+                    return;
+                }
                 
                 weightedX += centerX * weight;
                 weightedY += centerY * weight;
@@ -106,9 +137,22 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
             }
         });
         
-        if (totalWeight > 0) {
+        if (totalWeight > 0 && !isNaN(totalWeight)) {
             subjectCenterX = weightedX / totalWeight;
             subjectCenterY = weightedY / totalWeight;
+            
+            // Validate calculated centers
+            if (isNaN(subjectCenterX) || isNaN(subjectCenterY)) {
+                logger.warn('Invalid subject center calculated, using fallback', {
+                    weightedX,
+                    weightedY,
+                    totalWeight,
+                    calculatedX: subjectCenterX,
+                    calculatedY: subjectCenterY
+                });
+                subjectCenterX = 0.5;
+                subjectCenterY = 0.4;
+            }
             
             logger.info('Calculated WEIGHTED subject center FROM DETECTIONS', {
                 subjectCenterX,
