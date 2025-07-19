@@ -357,7 +357,6 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         cropAnalysis: {
             normalizedCrop: { x: cropX, y: cropY, width: cropWidth, height: cropHeight },
             pixelCrop: { x: pixelX, y: pixelY, width: pixelWidth, height: pixelHeight },
-            boundsAdjustmentApplied: boundsAdjustmentNeeded,
             subjectFullyContained
         },
         result
@@ -367,7 +366,7 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         logger.warn('ATTENTION: Subject may not be fully contained in final crop', {
             subjectPixelBounds,
             cropPixelBounds,
-            recommendation: 'Consider increasing SUBJECT_PADDING or review detection accuracy'
+            recommendation: 'Review detection accuracy or adjust algorithm parameters'
         });
     }
     
