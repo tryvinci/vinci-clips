@@ -376,18 +376,99 @@ function generatePreviewFrame(videoPath, cropParams, timestamp = 5) {
             
             // Validate crop parameters against video dimensions with safety margin
             const safetyMargin = 4; // 4 pixel safety margin for better compatibility
-            if (cropParams.x + cropParams.width > videoWidth - safetyMargin || 
-                cropParams.y + cropParams.height > videoHeight - safetyMargin ||
-                cropParams.x < safetyMargin || cropParams.y < safetyMargin) {
+            
+            // Check each condition individually for better debugging
+            const rightEdge = cropParams.x + cropParams.width;
+            const bottomEdge = cropParams.y + cropParams.height;
+            const maxX = videoWidth - safetyMargin;
+            const maxY = videoHeight - safetyMargin;
+            
+            const rightExceeds = rightEdge > maxX;
+            const bottomExceeds = bottomEdge > maxY;
+            const leftTooSmall = cropParams.x < safetyMargin;
+            const topTooSmall = cropParams.y < safetyMargin;
+            
+            logger.info('Crop validation details', {
+                videoWidth,
+                videoHeight,
+                cropParams,
+                safetyMargin,
+                checks: {
+                    rightEdge,
+                    bottomEdge,
+                    maxX,
+                    maxY,
+                    rightExceeds,
+                    bottomExceeds,
+                    leftTooSmall,
+                    topTooSmall
+                }
+            });
+            
+            if (rightExceeds || bottomExceeds || leftTooSmall || topTooSmall) {
+                // Attempt to auto-correct minor bounds violations
+                let correctedParams = { ...cropParams };
+                let correctionApplied = false;
                 
-                logger.logError(new Error('Crop parameters exceed video dimensions'), {
-                    context: 'crop_validation',
-                    videoWidth,
-                    videoHeight,
-                    cropParams,
-                    safetyMargin
-                });
-                return reject(new Error('Crop parameters exceed video dimensions'));
+                if (leftTooSmall) {
+                    correctedParams.x = safetyMargin;
+                    correctionApplied = true;
+                    logger.info('Auto-correcting x position', { 
+                        original: cropParams.x, 
+                        corrected: correctedParams.x 
+                    });
+                }
+                
+                if (topTooSmall) {
+                    correctedParams.y = safetyMargin;
+                    correctionApplied = true;
+                    logger.info('Auto-correcting y position', { 
+                        original: cropParams.y, 
+                        corrected: correctedParams.y 
+                    });
+                }
+                
+                if (rightExceeds) {
+                    correctedParams.x = maxX - correctedParams.width;
+                    correctionApplied = true;
+                    logger.info('Auto-correcting x for right edge', { 
+                        original: cropParams.x, 
+                        corrected: correctedParams.x 
+                    });
+                }
+                
+                if (bottomExceeds) {
+                    correctedParams.y = maxY - correctedParams.height;
+                    correctionApplied = true;
+                    logger.info('Auto-correcting y for bottom edge', { 
+                        original: cropParams.y, 
+                        corrected: correctedParams.y 
+                    });
+                }
+                
+                if (correctionApplied) {
+                    logger.info('Applied auto-corrections to crop parameters', {
+                        original: cropParams,
+                        corrected: correctedParams
+                    });
+                    // Use corrected parameters
+                    Object.assign(cropParams, correctedParams);
+                } else {
+                    logger.logError(new Error('Crop parameters exceed video dimensions'), {
+                        context: 'crop_validation',
+                        videoWidth,
+                        videoHeight,
+                        cropParams,
+                        safetyMargin,
+                        failedChecks: {
+                            rightExceeds,
+                            bottomExceeds,
+                            leftTooSmall,
+                            topTooSmall
+                        }
+                    });
+                    return reject(new Error('Crop parameters exceed video dimensions'));
+                }
             }
             
             // Ensure timestamp is within video duration
