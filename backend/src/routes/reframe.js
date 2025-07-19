@@ -132,15 +132,16 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
     
     let cropWidth, cropHeight;
     
-    // Start with maximum safe dimensions (85% to ensure we stay well within bounds)
-    const maxSafeRatio = 0.85;
+    // Use maximum possible dimensions while maintaining aspect ratio
+    // Only apply minimal safety margin (2%) for final positioning
+    const maxSafeRatio = 0.98;
     
     if (videoAspect > targetAspect) {
-        // Video is wider than target - constrain by height
+        // Video is wider than target - constrain by height to maximize crop size
         cropHeight = maxSafeRatio;
         cropWidth = cropHeight * targetAspect;
         
-        // Ensure width doesn't exceed safe bounds
+        // If calculated width exceeds video bounds, constrain by width instead
         if (cropWidth > maxSafeRatio) {
             cropWidth = maxSafeRatio;
             cropHeight = cropWidth / targetAspect;
@@ -150,16 +151,12 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         cropWidth = maxSafeRatio;
         cropHeight = cropWidth / targetAspect;
         
-        // Ensure height doesn't exceed safe bounds
+        // If calculated height exceeds video bounds, constrain by height instead
         if (cropHeight > maxSafeRatio) {
             cropHeight = maxSafeRatio;
             cropWidth = cropHeight * targetAspect;
         }
     }
-    
-    // Double-check that both dimensions are within safe bounds
-    cropWidth = Math.min(cropWidth, maxSafeRatio);
-    cropHeight = Math.min(cropHeight, maxSafeRatio);
     
     logger.info('Crop dimensions calculated', {
         videoAspect,
@@ -262,12 +259,35 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
         zoomFactor: 1.0 / Math.max(cropWidth, cropHeight)
     };
     
+    // Verify that the subject center is actually within the crop area
+    const subjectPixelX = Math.round(subjectCenterX * videoWidth);
+    const subjectPixelY = Math.round(subjectCenterY * videoHeight);
+    const isSubjectInCrop = (
+        subjectPixelX >= pixelX && 
+        subjectPixelX <= pixelX + pixelWidth &&
+        subjectPixelY >= pixelY && 
+        subjectPixelY <= pixelY + pixelHeight
+    );
+    
     logger.info('Final crop calculation result', {
         videoDimensions,
         targetAspect,
-        subjectCenter: { x: subjectCenterX, y: subjectCenterY },
+        subjectCenter: { 
+            normalized: { x: subjectCenterX, y: subjectCenterY },
+            pixel: { x: subjectPixelX, y: subjectPixelY }
+        },
         cropDimensions: { width: cropWidth, height: cropHeight },
-        cropPosition: { x: cropX, y: cropY },
+        cropPosition: { 
+            normalized: { x: cropX, y: cropY },
+            pixel: { x: pixelX, y: pixelY }
+        },
+        cropBounds: {
+            left: pixelX,
+            right: pixelX + pixelWidth,
+            top: pixelY,
+            bottom: pixelY + pixelHeight
+        },
+        subjectInCrop: isSubjectInCrop,
         pixelResult: result,
         hasDetections
     });
