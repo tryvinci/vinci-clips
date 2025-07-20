@@ -1,0 +1,82 @@
+# Docker ignore file for Vinci Clips
+
+# Node modules
+**/node_modules
+**/npm-debug.log*
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.production
+
+# Build outputs
+**/dist
+**/.next
+**/build
+
+# Logs
+**/logs
+**/*.log
+
+# Runtime data
+**/pids
+**/*.pid
+**/*.seed
+**/*.pid.lock
+
+# Dependency directories
+**/bower_components
+
+# Optional npm cache directory
+**/.npm
+
+# Optional eslint cache
+**/.eslintcache
+
+# Coverage directory used by tools like istanbul
+**/coverage
+
+# nyc test coverage
+**/.nyc_output
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+**/.vscode
+**/.idea
+
+# Git
+.git
+.gitignore
+
+# Docker
+**/Dockerfile*
+**/docker-compose*
+
+# Temporary files
+**/temp
+**/tmp
+
+# Cache directories
+**/cache
+
+# Documentation
+**/docs
+**/README.md
+
+# Testing
+**/*.test.js
+**/test
+**/tests
+
+# Development tools
+**/.prettierrc
+**/.eslintrc*
+**/jest.config.*

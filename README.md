@@ -97,6 +97,12 @@ Additionally, you'll need accounts and API keys for:
 3. **Configure environment variables**
    
    Create a `.env` file in the `backend` directory:
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
+   
+   Edit `backend/.env` with your actual values:
    ```env
    # Server Configuration
    PORT=8080
@@ -106,11 +112,13 @@ Additionally, you'll need accounts and API keys for:
    
    # Google Cloud Storage
    GCP_BUCKET_NAME=your-bucket-name
-   GCP_SERVICE_ACCOUNT_PATH=./path/to/service-account.json
+   GCP_SERVICE_ACCOUNT_PATH=./gcp-service-account.json
    
    # AI Services
    GEMINI_API_KEY=your-gemini-api-key
    ```
+   
+   **Note**: For Docker deployment, see `docker-setup.md` for different environment configuration.
 
 4. **Set up Google Cloud Storage**
    
