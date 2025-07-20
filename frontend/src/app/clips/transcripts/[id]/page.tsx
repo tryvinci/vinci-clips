@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
 import ReframeModal from '@/components/ReframeModal';
+import CaptionGenerator from '@/components/CaptionGenerator';
 import { Wand2 } from 'lucide-react';
 
 interface TranscriptSegment {
@@ -304,6 +305,14 @@ export default function TranscriptDetailPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Caption Generator */}
+            {transcript && (
+                <CaptionGenerator 
+                    transcriptId={transcript._id}
+                    videoUrl={transcript.videoUrl}
+                />
+            )}
 
             {/* Reframe Modal */}
             {transcript && selectedClipForReframe && (

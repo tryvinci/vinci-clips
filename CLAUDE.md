@@ -12,7 +12,7 @@ Vinci Clips is an AI-powered video clipping tool that automatically generates sh
 - **Database:** MongoDB with Mongoose ODM
 - **AI Services:** Google Gemini API for transcription and analysis
 - **Cloud Storage:** Google Cloud Storage for video/audio files
-- **Video Processing:** FFmpeg for video-to-audio conversion
+- **Video Processing:** FFmpeg for video-to-audio conversion and caption burning
 
 ## Development Commands
 
@@ -68,8 +68,9 @@ npm run lint
   - `transcripts.js` - Transcript CRUD operations
   - `analyze.js` - AI analysis endpoints
   - `clips.js` - Clip management
+  - `captions.js` - Caption generation and style management (planned)
 - **Models:** `src/models/` - Mongoose schemas (e.g., `Transcript.js`)
-- **File Processing:** Uses `fluent-ffmpeg` for video-to-MP3 conversion
+- **File Processing:** Uses `fluent-ffmpeg` for video-to-MP3 conversion and caption burning
 - **Cloud Integration:** Google Cloud Storage and Gemini API integration
 
 ### Frontend Structure
@@ -86,9 +87,10 @@ npm run lint
 1. User uploads video via drag-and-drop interface
 2. Backend converts video to MP3 using FFmpeg
 3. Files uploaded to Google Cloud Storage in parallel
-4. Gemini API transcribes audio with speaker diarization
-5. Transcript data saved to MongoDB
+4. Gemini API transcribes audio with word-level timestamps and speaker diarization
+5. Transcript data saved to MongoDB with precise timing
 6. Frontend displays transcript with video playback
+7. **Caption Generation:** FFmpeg burns styled captions into video clips for social media
 
 ## Environment Setup
 
@@ -131,12 +133,30 @@ GEMINI_API_KEY=<gemini-api-key>
 ### Completed Features
 - Video file upload with progress tracking and status management
 - Video-to-MP3 conversion and cloud storage with thumbnail generation
-- Gemini API transcription with speaker diarization
+- Gemini API transcription with speaker diarization (segment-level timestamps)
 - Transcript storage and retrieval with status tracking
 - AI-powered clip analysis and generation
 - Frontend interfaces for upload, transcript viewing, and clip management
 - Homepage with recent videos and status indicators
 - Comprehensive status management system (uploading → converting → transcribing → completed/failed)
+
+### In Development: TikTok/Reels Caption System
+- **Technical Requirements:**
+  - Upgrade Gemini API integration to use `audioTimestamp: true` for word-level precision
+  - Implement FFmpeg caption burning with popular social media styles
+  - Create caption style presets (Bold Center, Neon Pop, Typewriter, Bubble, Minimal Clean)
+  - Add popular fonts (Montserrat, Poppins, Bebas Neue, Oswald, Roboto) to system
+- **Caption Styles Specification:**
+  - **Bold Center**: Heavy sans-serif, center-aligned, white text with black outline, suitable for all content
+  - **Neon Pop**: Bright gradient colors (yellow/pink/cyan), bold fonts, drop shadows, trending style
+  - **Typewriter**: Monospace fonts, word-by-word appearance animation, vintage aesthetic
+  - **Bubble Style**: Rounded text backgrounds, colorful overlays, soft shadows, friendly tone
+  - **Minimal Clean**: Light fonts, subtle backgrounds, elegant spacing, professional look
+- **Implementation Plan:**
+  1. Modify Gemini API call to include word-level timestamps
+  2. Create caption style engine with FFmpeg integration
+  3. Build style preset selection UI with live preview
+  4. Test word-timing accuracy and style rendering quality
 
 ### Next Development Priorities
 #### Phase 1: Core Platform Enhancements (High Priority)
@@ -146,8 +166,13 @@ GEMINI_API_KEY=<gemini-api-key>
 - Performance optimization with background job processing
 
 #### Phase 2: Advanced Content Features (Medium Priority)
+- **TikTok/Reels Style Captions (HIGH PRIORITY)** - Burned-in captions with popular social media styles
+  - Word-level timestamp precision using Gemini API `audioTimestamp: true`
+  - Popular caption styles: Bold Center, Neon Pop, Typewriter, Bubble, Minimal Clean
+  - Popular fonts: Montserrat Bold, Poppins SemiBold, Bebas Neue, Oswald, Roboto Black
+  - FFmpeg integration for burning captions directly into video
+  - Style preset selection UI with real-time preview
 - Auto-reframing for social media aspect ratios (9:16, 1:1, 16:9) with AI subject detection
-- Advanced captioning system with style customization and SRT export
 - AI-generated B-roll integration for enhanced clip engagement
 - Timeline-based clip preview and editing functionality
 

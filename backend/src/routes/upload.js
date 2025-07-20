@@ -166,7 +166,7 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 
                 const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
 
-                const prompt = "Transcribe the provided audio into segments with start and end times, and identify the speaker for each segment. Format the output as a JSON array of objects, where each object has 'start', 'end', 'text', and 'speaker' fields. For example: [{'start': '00:00', 'end': '00:05', 'text': 'Hello world.', 'speaker': 'Speaker 1'}]";
+                const prompt = "Transcribe the provided audio with word-level timestamps and identify the speaker for each word. Format the output as a JSON array of objects, where each object represents a single word with precise millisecond timing. Each object should have 'start' (in format MM:SS:mmm), 'end' (in format MM:SS:mmm), 'text' (single word), and 'speaker' fields. For example: [{'start': '00:00:000', 'end': '00:00:450', 'text': 'Hello', 'speaker': 'Speaker 1'}, {'start': '00:00:450', 'end': '00:00:890', 'text': 'world', 'speaker': 'Speaker 1'}]";
 
                 const result = await model.generateContent({
                     contents: [{
@@ -177,6 +177,7 @@ router.post('/file', upload.single('video'), async (req, res) => {
                         ],
                     }],
                     generationConfig: {
+                        audioTimestamp: true,
                         responseMimeType: 'application/json',
                         responseSchema: {
                             type: 'ARRAY',

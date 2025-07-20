@@ -27,6 +27,223 @@ const ASPECT_RATIOS = {
     'story': { width: 9, height: 16, name: 'Instagram/Facebook Story' }
 };
 
+// Helper function to convert time format to seconds for SRT
+function timeToSeconds(timeStr) {
+    const parts = timeStr.split(':');
+    const minutes = parseInt(parts[0]);
+    const seconds = parseInt(parts[1]);
+    const milliseconds = parts[2] ? parseInt(parts[2]) : 0;
+    return minutes * 60 + seconds + (milliseconds / 1000);
+}
+
+// Helper function to convert segment-level transcript to word-level for captions
+function convertToWordLevel(segments) {
+    const words = [];
+    
+    segments.forEach(segment => {
+        const startTime = timeToSeconds(segment.start);
+        const endTime = timeToSeconds(segment.end);
+        const duration = endTime - startTime;
+        const text = segment.text.trim();
+        const wordsInSegment = text.split(/\s+/);
+        
+        // Distribute timing evenly across words in the segment
+        const timePerWord = duration / wordsInSegment.length;
+        
+        wordsInSegment.forEach((word, index) => {
+            const wordStart = startTime + (index * timePerWord);
+            const wordEnd = wordStart + timePerWord;
+            
+            // Format back to MM:SS:mmm
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                const ms = Math.floor((seconds % 1) * 1000);
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}:${ms.toString().padStart(3, '0')}`;
+            };
+            
+            words.push({
+                start: formatTime(wordStart),
+                end: formatTime(wordEnd),
+                text: word.replace(/[.,!?;]/g, ''), // Remove punctuation
+                speaker: segment.speaker
+            });
+        });
+    });
+    
+    return words;
+}
+
+// Helper function to build SRT subtitle content for reframe
+function buildSRTContent(words) {
+    if (!Array.isArray(words) || words.length === 0) {
+        return '';
+    }
+    
+    // Group words into phrases to reduce the number of subtitle entries
+    const phrases = [];
+    let currentPhrase = [];
+    let phraseStart = null;
+    
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        
+        if (!word || !word.start || !word.end || !word.text) {
+            continue;
+        }
+        
+        if (phraseStart === null) {
+            phraseStart = word.start;
+        }
+        
+        currentPhrase.push(word.text);
+        
+        // End phrase after 3-5 words or at natural breaks
+        const shouldEndPhrase = currentPhrase.length >= 4 || 
+                               word.text.match(/[.!?]$/) ||
+                               i === words.length - 1;
+        
+        if (shouldEndPhrase) {
+            phrases.push({
+                start: phraseStart,
+                end: word.end,
+                text: currentPhrase.join(' ')
+            });
+            currentPhrase = [];
+            phraseStart = null;
+        }
+    }
+    
+    // Convert phrases to SRT format
+    let srtContent = '';
+    phrases.forEach((phrase, index) => {
+        const startTime = convertToSRTTime(phrase.start);
+        const endTime = convertToSRTTime(phrase.end);
+        
+        srtContent += `${index + 1}\n`;
+        srtContent += `${startTime} --> ${endTime}\n`;
+        srtContent += `${phrase.text}\n\n`;
+    });
+    
+    return srtContent;
+}
+
+// Helper function to convert time format to SRT format (HH:MM:SS,mmm)
+function convertToSRTTime(timeStr) {
+    const parts = timeStr.split(':');
+    let hours = 0, minutes = 0, seconds = 0, milliseconds = 0;
+    
+    if (parts.length === 3) {
+        minutes = parseInt(parts[0]);
+        seconds = parseInt(parts[1]);
+        milliseconds = parseInt(parts[2]) || 0;
+    } else if (parts.length === 2) {
+        minutes = parseInt(parts[0]);
+        seconds = parseInt(parts[1]);
+    }
+    
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+}
+
+// Helper function to convert color to ASS format for captions
+function convertColorToASS(color) {
+    if (color === 'white') return '&H00FFFFFF';
+    if (color === 'black') return '&H00000000';
+    if (color.startsWith('#')) {
+        const hex = color.slice(1);
+        const r = parseInt(hex.substr(0, 2), 16);
+        const g = parseInt(hex.substr(2, 2), 16);
+        const b = parseInt(hex.substr(4, 2), 16);
+        return `&H00${b.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${r.toString(16).padStart(2, '0')}`.toUpperCase();
+    }
+    return '&H00FFFFFF';
+}
+
+/**
+ * Build caption SRT file for FFmpeg reframe
+ * @param {Array} segments - Array of transcript segments  
+ * @param {string} style - Caption style ID
+ * @returns {string} Path to generated SRT file or null
+ */
+function buildCaptionFilter(segments, style) {
+    // Caption style configurations
+    const CAPTION_STYLES = {
+        'bold-center': {
+            fontsize: 48,
+            fontcolor: 'white',
+            borderw: 3,
+            bordercolor: 'black'
+        },
+        'neon-pop': {
+            fontsize: 52,
+            fontcolor: '#FF6B9D',
+            borderw: 2,
+            bordercolor: '#FFD93D'
+        },
+        'typewriter': {
+            fontsize: 44,
+            fontcolor: 'white',
+            borderw: 2,
+            bordercolor: 'black'
+        },
+        'bubble': {
+            fontsize: 46,
+            fontcolor: 'white',
+            borderw: 4,
+            bordercolor: '#4ECDC4'
+        },
+        'minimal-clean': {
+            fontsize: 42,
+            fontcolor: 'white',
+            borderw: 1,
+            bordercolor: 'black'
+        }
+    };
+
+    const styleConfig = CAPTION_STYLES[style];
+    if (!styleConfig) return null;
+
+    try {
+        // Convert segment-level transcript to word-level if needed
+        let words;
+        if (segments && segments.length > 0) {
+            const firstSegment = segments[0];
+            const isWordLevel = firstSegment.text && firstSegment.text.split(/\s+/).length === 1;
+            
+            if (isWordLevel) {
+                words = segments;
+            } else {
+                words = convertToWordLevel(segments);
+            }
+        } else {
+            return null;
+        }
+
+        // Generate SRT content
+        const srtContent = buildSRTContent(words);
+        if (!srtContent) return null;
+
+        // Create temporary SRT file
+        const tempDir = 'uploads/temp/';
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        const srtFilename = `reframe_captions_${Date.now()}.srt`;
+        const srtPath = path.join(tempDir, srtFilename);
+        
+        fs.writeFileSync(srtPath, srtContent);
+        
+        console.log(`Created SRT file for reframe: ${srtPath} with ${words.length} words`);
+        
+        return srtPath;
+        
+    } catch (error) {
+        console.error('Error building caption filter:', error);
+        return null;
+    }
+}
+
 /**
  * Calculate optimal crop parameters based on subject detections and target aspect ratio
  * @param {Object} detections - MediaPipe detection results from frontend
@@ -734,7 +951,8 @@ router.post('/generate', async (req, res) => {
             targetPlatform, 
             cropParameters, 
             outputName,
-            generatedClipUrl
+            generatedClipUrl,
+            captions
         } = req.body;
         
         if (!transcriptId || !targetPlatform || !cropParameters) {
@@ -815,11 +1033,36 @@ router.post('/generate', async (req, res) => {
             ffmpegCropFilter: `crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`
         });
         
+        // Build video filters
+        const videoFilters = [`crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`];
+        let srtPath = null;
+        
+        // Add captions if requested
+        if (captions && captions.enabled && captions.style) {
+            const transcript = await Transcript.findById(transcriptId);
+            if (transcript && transcript.transcript && transcript.transcript.length > 0) {
+                srtPath = buildCaptionFilter(transcript.transcript, captions.style);
+                if (srtPath) {
+                    console.log(`Using SRT file for captions: ${srtPath}`);
+                    // Add subtitle filter to video filters
+                    const styleConfig = {
+                        'bold-center': { fontsize: 48, fontcolor: 'white', borderw: 3, bordercolor: 'black' },
+                        'neon-pop': { fontsize: 52, fontcolor: '#FF6B9D', borderw: 2, bordercolor: '#FFD93D' },
+                        'typewriter': { fontsize: 44, fontcolor: 'white', borderw: 2, bordercolor: 'black' },
+                        'bubble': { fontsize: 46, fontcolor: 'white', borderw: 4, bordercolor: '#4ECDC4' },
+                        'minimal-clean': { fontsize: 42, fontcolor: 'white', borderw: 1, bordercolor: 'black' }
+                    };
+                    
+                    const style = styleConfig[captions.style] || styleConfig['bold-center'];
+                    const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=Arial,FontSize=${style.fontsize},PrimaryColour=${convertColorToASS(style.fontcolor)},OutlineColour=${convertColorToASS(style.bordercolor)},Outline=${style.borderw},Alignment=2,MarginV=80'`;
+                    videoFilters.push(subtitleFilter);
+                }
+            }
+        }
+
         // Build FFmpeg command - no timing needed since we're processing the entire generated clip
         const command = ffmpeg(tempVideoPath)
-            .videoFilters([
-                `crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`
-            ])
+            .videoFilters(videoFilters)
             .outputOptions([
                 '-c:v libx264',
                 '-crf 23',
@@ -840,7 +1083,13 @@ router.post('/generate', async (req, res) => {
                     });
                 })
                 .on('end', resolve)
-                .on('error', reject)
+                .on('error', (err) => {
+                    // Cleanup SRT file on error
+                    if (srtPath) {
+                        fs.unlink(srtPath, () => {});
+                    }
+                    reject(err);
+                })
                 .run();
         });
         
@@ -864,6 +1113,14 @@ router.post('/generate', async (req, res) => {
         // Cleanup temporary files
         fs.unlink(tempVideoPath, () => {});
         fs.unlink(outputPath, () => {});
+        
+        // Cleanup SRT file if it was created
+        if (srtPath) {
+            fs.unlink(srtPath, (err) => {
+                if (err) console.warn('Failed to cleanup SRT file:', err.message);
+                else console.log('SRT file cleaned up successfully');
+            });
+        }
         
         logger.info('Reframe generation completed', {
             transcriptId,

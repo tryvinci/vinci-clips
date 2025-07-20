@@ -21,7 +21,8 @@ import {
   Settings, 
   Eye,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Type
 } from 'lucide-react';
 import SubjectDetection from './SubjectDetection';
 import axios from 'axios';
@@ -52,6 +53,12 @@ interface ReframedVideo {
   platformName: string;
   aspectRatio: string;
   cropParameters: CropParameters;
+}
+
+interface CaptionStyle {
+  id: string;
+  name: string;
+  description: string;
 }
 
 interface ReframeModalProps {
@@ -133,6 +140,11 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   const [reframedVideo, setReframedVideo] = useState<ReframedVideo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [outputName, setOutputName] = useState<string>('');
+  
+  // Caption-related state
+  const [captionStyles, setCaptionStyles] = useState<CaptionStyle[]>([]);
+  const [selectedCaptionStyle, setSelectedCaptionStyle] = useState<string>('');
+  const [addCaptions, setAddCaptions] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
   const [endTime, setEndTime] = useState<number>(0);
   const [videoDuration, setVideoDuration] = useState<number>(0);
@@ -149,6 +161,25 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
       setEndTime(0);
     }
   }, [isOpen, originalFilename, selectedPlatform]);
+
+  // Fetch caption styles when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchCaptionStyles();
+    }
+  }, [isOpen]);
+
+  const fetchCaptionStyles = async () => {
+    try {
+      const response = await axios.get('http://localhost:8080/clips/captions/styles');
+      setCaptionStyles(response.data.styles);
+      if (response.data.styles.length > 0) {
+        setSelectedCaptionStyle(response.data.styles[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch caption styles:', error);
+    }
+  };
 
   // Handle subject detection completion
   const handleDetectionComplete = async (detectionResults: any[]) => {
@@ -216,7 +247,11 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
         targetPlatform: selectedPlatform,
         cropParameters,
         outputName: outputName,
-        generatedClipUrl: generatedClipUrl // Use generated clip instead of timing
+        generatedClipUrl: generatedClipUrl, // Use generated clip instead of timing
+        captions: addCaptions ? {
+          enabled: true,
+          style: selectedCaptionStyle
+        } : { enabled: false }
       });
       
       clearInterval(progressInterval);
@@ -326,13 +361,17 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
 
           {/* Main Content Tabs */}
           <Tabs value={currentTab} onValueChange={setCurrentTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="detect" className="flex items-center gap-2">
                 <Eye className="w-4 h-4" />
                 Detect
               </TabsTrigger>
               <TabsTrigger value="preview" disabled={!cropParameters}>
                 Preview
+              </TabsTrigger>
+              <TabsTrigger value="captions" className="flex items-center gap-2">
+                <Type className="w-4 h-4" />
+                Captions
               </TabsTrigger>
               <TabsTrigger value="settings" disabled={!cropParameters}>
                 <Settings className="w-4 h-4" />
@@ -422,6 +461,90 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            {/* Captions Tab */}
+            <TabsContent value="captions" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Type className="w-5 h-5" />
+                    TikTok/Reels Style Captions
+                  </CardTitle>
+                  <CardDescription>
+                    Add word-level synchronized captions to your reframed video for maximum engagement.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="addCaptions"
+                      checked={addCaptions}
+                      onChange={(e) => setAddCaptions(e.target.checked)}
+                      className="rounded"
+                    />
+                    <Label htmlFor="addCaptions" className="text-sm font-medium">
+                      Add captions to reframed video
+                    </Label>
+                  </div>
+
+                  {addCaptions && (
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium">Caption Style</Label>
+                        <Select value={selectedCaptionStyle} onValueChange={setSelectedCaptionStyle}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select caption style" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {captionStyles.map((style) => (
+                              <SelectItem key={style.id} value={style.id}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{style.name}</span>
+                                  <span className="text-xs text-muted-foreground">{style.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        {captionStyles.map((style) => (
+                          <div
+                            key={style.id}
+                            className={`p-3 border rounded cursor-pointer transition-colors ${
+                              selectedCaptionStyle === style.id
+                                ? 'border-primary bg-primary/10'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => setSelectedCaptionStyle(style.id)}
+                          >
+                            <div className="font-medium text-sm">{style.name}</div>
+                            <div className="text-xs text-muted-foreground mt-1">{style.description}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5" />
+                          <div className="text-sm">
+                            <p className="font-medium text-blue-900">Caption Features:</p>
+                            <ul className="text-blue-700 mt-1 space-y-1">
+                              <li>• Word-level synchronization for perfect timing</li>
+                              <li>• TikTok/Reels optimized styles and positioning</li>
+                              <li>• Automatic speaker detection and labeling</li>
+                              <li>• Burned-in captions that work on all platforms</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             {/* Settings Tab */}

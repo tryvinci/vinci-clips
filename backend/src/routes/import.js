@@ -60,8 +60,21 @@ const extractYouTubeVideo = async (url) => {
         const info = await ytdl.getInfo(url);
         const videoDetails = info.videoDetails;
 
-        // Get the best quality video format
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highest' });
+        // Get the best quality video format that includes audio
+        // Try to get a format with both audio and video, fall back if needed
+        let format;
+        try {
+            format = ytdl.chooseFormat(info.formats, { 
+                quality: 'highestvideo',
+                filter: 'audioandvideo' 
+            });
+        } catch (error) {
+            console.log('No audioandvideo format found, trying highest quality with audio...');
+            format = ytdl.chooseFormat(info.formats, { 
+                quality: 'highest',
+                filter: format => format.hasAudio && format.hasVideo
+            });
+        }
         
         return {
             title: videoDetails.title,
@@ -110,7 +123,41 @@ const extractVimeoVideo = async (url) => {
     }
 };
 
-// Generic video download utility
+// YouTube-specific download using ytdl stream
+const downloadYouTubeVideo = async (url, outputPath) => {
+    return new Promise((resolve, reject) => {
+        try {
+            // Use ytdl to download with audio+video format preference
+            const stream = ytdl(url, {
+                quality: 'highest',
+                filter: format => format.hasAudio && format.hasVideo
+            });
+
+            const writer = fs.createWriteStream(outputPath);
+            stream.pipe(writer);
+
+            stream.on('error', (error) => {
+                console.error('ytdl stream error:', error.message);
+                reject(new Error(`YouTube download failed: ${error.message}`));
+            });
+
+            writer.on('error', (error) => {
+                console.error('File write error:', error.message);
+                reject(new Error(`File write failed: ${error.message}`));
+            });
+
+            writer.on('finish', () => {
+                console.log('YouTube download completed:', outputPath);
+                resolve();
+            });
+
+        } catch (error) {
+            reject(new Error(`YouTube download setup failed: ${error.message}`));
+        }
+    });
+};
+
+// Generic video download utility (for other platforms)
 const downloadVideo = async (downloadUrl, outputPath) => {
     try {
         const response = await axios({
@@ -181,13 +228,13 @@ router.post('/url', async (req, res) => {
         console.log(`Created transcript record ${transcript._id} for ${platform} import`);
 
         // For YouTube, we can download directly
-        if (platform === 'youtube' && videoInfo.downloadUrl) {
-            // Download video in background
+        if (platform === 'youtube') {
+            // Download video using ytdl stream to ensure audio+video
             const videoPath = path.join(importsDir, `${transcript._id}.mp4`);
             
             try {
-                // Download the video
-                await downloadVideo(videoInfo.downloadUrl, videoPath);
+                // Download the video using ytdl stream instead of URL
+                await downloadYouTubeVideo(url, videoPath);
                 
                 // Update status to converting
                 transcript.status = 'converting';
