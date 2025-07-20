@@ -1,214 +1,334 @@
-# 🎬 Vinci Clips - Open Source AI Video Clipping Platform
-
-<div align="center">
-
-![Vinci Clips Logo](https://via.placeholder.com/400x100/2563eb/ffffff?text=Vinci+Clips)
-
-**Transform long videos into engaging short clips with AI-powered precision**
+# Vinci Clips
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15.3.5-black)](https://nextjs.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green)](https://mongodb.com/)
 
-[**🚀 Try Hosted Version**](https://tryvinci.com) • [**📖 Documentation**](#installation) • [**🐛 Report Bug**](https://github.com/tryvinci/vinci-clips/issues) • [**💡 Request Feature**](https://github.com/tryvinci/vinci-clips/issues)
+> AI-powered video clipping platform that automatically transforms long-form videos into engaging short clips optimized for social media platforms.
 
-</div>
+## Overview
 
----
+Vinci Clips is an open-source platform that leverages artificial intelligence to analyze video content, generate accurate transcriptions, and automatically identify the most engaging segments for creating viral short-form content. The platform streamlines the content creation workflow for creators, marketers, and businesses looking to maximize their video content's reach across multiple social media platforms.
 
-## ✨ What is Vinci Clips?
+## Key Features
 
-Vinci Clips is an **open-source AI-powered video clipping platform** that automatically generates short, engaging video clips from longer videos. Perfect for content creators, marketers, and social media managers who want to maximize their video content's reach across platforms.
+### Core Functionality
+- **Intelligent Video Analysis**: AI-powered content analysis using Google Gemini API
+- **Automatic Transcription**: Speaker diarization with precise timestamp alignment
+- **Smart Clip Generation**: AI suggests optimal clip segments based on content analysis
+- **Multi-Format Support**: Support for major video formats with automatic conversion
+- **Cloud Integration**: Seamless Google Cloud Storage integration for scalability
 
-### 🎯 **Want to skip the setup?** 
-👉 **[Get started instantly with our hosted solution at tryvinci.com](https://tryvinci.com)** - No installation required!
+### Content Processing
+- **Video-to-Audio Conversion**: High-quality audio extraction using FFmpeg
+- **Thumbnail Generation**: Automatic video thumbnail creation for quick preview
+- **Status Tracking**: Real-time processing status with comprehensive error handling
+- **Batch Processing**: Support for multiple video uploads with queue management
 
----
+### User Interface
+- **Intuitive Dashboard**: Clean, responsive interface built with Next.js and Tailwind CSS
+- **Drag-and-Drop Upload**: Simple file upload with progress tracking (up to 2GB)
+- **Video Playback**: Integrated video player with transcript synchronization
+- **Mobile Responsive**: Optimized experience across desktop and mobile devices
 
-## 🚀 Key Features
+## Architecture
 
-### 🎥 **Smart Video Processing**
-- **AI-Powered Clip Generation**: Automatically identifies the best moments for short-form content
-- **Multi-Platform Import**: Upload files or import from YouTube, Vimeo, Instagram, LinkedIn, TikTok
-- **Intelligent Transcription**: Speaker diarization and precise timestamp alignment
-- **Thumbnail Generation**: Automatic video thumbnail creation
-
-### 🎨 **Social Media Optimization** 
-- **Auto-Reframing**: Automatically adjust videos for different aspect ratios (9:16, 1:1, 16:9)
-- **AI-Generated Captions**: Synchronized, customizable captions with multiple styles
-- **B-roll Integration**: Context-aware supplementary content generation
-- **Platform-Specific Formats**: Optimized output for TikTok, Instagram, YouTube Shorts
-
-### 🔧 **Developer-Friendly**
-- **Modern Tech Stack**: Next.js, Node.js, MongoDB, Google Cloud
-- **Comprehensive APIs**: RESTful endpoints for all functionality
-- **Real-time Status Tracking**: WebSocket support for live updates
-- **Extensive Logging**: Production-ready logging and monitoring
-
-### 🏢 **Enterprise Ready**
-- **Background Job Processing**: Scalable video processing with Redis queues
-- **Cloud Storage Integration**: Google Cloud Storage with CDN support
-- **Comprehensive Error Handling**: Automatic retries and graceful degradation
-- **Security First**: Best practices for API keys and data protection
-
----
-
-## 🏗️ Architecture Overview
-
-```mermaid
-graph TD
-    A[Frontend - Next.js] --> B[Backend - Express API]
-    B --> C[MongoDB Database]
-    B --> D[Google Cloud Storage]
-    B --> E[Google Gemini AI]
-    B --> F[FFmpeg Processing]
-    G[Redis Queue] --> B
-    H[External APIs] --> B
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │   Backend       │    │   External      │
+│   Next.js       │◄──►│   Express API   │◄──►│   Services      │
+│   React/TS      │    │   Node.js       │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                        │                        │
+         │                        ▼                        │
+         │              ┌─────────────────┐                │
+         │              │   Database      │                │
+         │              │   MongoDB       │                │
+         │              └─────────────────┘                │
+         │                                                 │
+         │              ┌─────────────────┐                │
+         └──────────────│   File Storage  │                │
+                        │   Google Cloud  │                │
+                        └─────────────────┘                │
+                                                           │
+                        ┌─────────────────┐                │
+                        │   AI Services   │◄───────────────┘
+                        │   Gemini API    │
+                        └─────────────────┘
 ```
 
 **Technology Stack:**
-- **Frontend:** Next.js 15+ with React, TypeScript, Tailwind CSS, Shadcn/ui
-- **Backend:** Node.js with Express, comprehensive logging, modular architecture
-- **Database:** MongoDB with Mongoose ODM for data persistence
-- **AI Services:** Google Gemini API for transcription and content analysis
-- **Cloud Storage:** Google Cloud Storage for scalable file management
-- **Video Processing:** FFmpeg for conversion, thumbnail generation, and manipulation
-- **Job Queue:** Redis with Bull for background processing (planned)
-- **Deployment:** Docker-ready with environment-based configuration
-
-## Core Workflow
-
-### Current Implementation
-1.  **Input:** Users upload video files (up to 2GB) through drag-and-drop interface with real-time progress tracking.
-2.  **Processing:** Backend converts videos to MP3 and generates thumbnails using FFmpeg with status updates.
-3.  **Cloud Storage:** Videos, audio files, and thumbnails uploaded to Google Cloud Storage in parallel for efficiency.
-4.  **Transcription:** Gemini API transcribes audio with speaker diarization and precise timestamp alignment.
-5.  **Analysis:** AI analyzes transcripts to suggest 3-5 optimal clips with single or multi-segment options.
-6.  **Generation:** Users can generate actual video clips from AI suggestions with cloud storage integration.
-7.  **Database:** Comprehensive data storage with status tracking (uploading → converting → transcribing → completed).
-8.  **Display:** Homepage with recent videos, status indicators, and detailed transcript view with inline video playback.
-
-### Enhanced Features (Roadmap)
-9.  **URL Import:** Import videos from YouTube, Instagram, LinkedIn, Vimeo using just URLs.
-10. **Auto-Reframing:** Automatically adjust clips for social media aspect ratios (9:16, 1:1, 16:9).
-11. **AI B-roll:** Generate contextually relevant B-roll content to enhance clip engagement.
-12. **Captioning:** Add synchronized, stylized captions with customization options.
-13. **Social Publishing:** Schedule and post clips directly to social media platforms with AI-generated metadata.
+- **Frontend**: Next.js 15, React, TypeScript, Tailwind CSS, Shadcn/ui
+- **Backend**: Node.js, Express.js, MongoDB with Mongoose
+- **AI/ML**: Google Gemini API for transcription and analysis
+- **Media Processing**: FFmpeg for video/audio conversion and manipulation
+- **Cloud Storage**: Google Cloud Storage with signed URL access
+- **Infrastructure**: Docker-ready with environment-based configuration
 
 ## Getting Started
 
 ### Prerequisites
 
--   Node.js (v18 or later)
--   `ffmpeg` installed and available in your system's PATH.
--   A Google Cloud Platform account with a service account key and a GCS bucket.
--   A MongoDB database and connection string.
--   A Gemini API key.
+Before running Vinci Clips, ensure you have the following installed:
+
+- **Node.js** (version 18.0.0 or higher)
+- **FFmpeg** (installed and available in your system PATH)
+- **MongoDB** (local installation or cloud instance)
+
+Additionally, you'll need accounts and API keys for:
+- **Google Cloud Platform** (for storage and service account)
+- **Google Gemini API** (for AI transcription services)
 
 ### Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd vinci-clips
-    ```
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/tryvinci/vinci-clips.git
+   cd vinci-clips
+   ```
 
-2.  **Install dependencies for both frontend and backend:**
-    ```bash
-    npm install
-    ```
+2. **Install dependencies**
+   ```bash
+   # Install dependencies for both frontend and backend
+   npm run install:all
+   ```
 
-3.  **Set up environment variables:**
-    Create a `.env` file in the `backend` directory and add the following:
-    ```
-    PORT=8080
-    DB_URL=<your-mongodb-connection-string>
-    GCP_BUCKET_NAME=<your-gcs-bucket-name>
-    GCP_SERVICE_ACCOUNT_PATH=<path-to-your-gcp-service-account.json>
-    GEMINI_API_KEY=<your-gemini-api-key>
-    ```
+3. **Configure environment variables**
+   
+   Create a `.env` file in the `backend` directory:
+   ```env
+   # Server Configuration
+   PORT=8080
+   
+   # Database
+   DB_URL=mongodb://localhost:27017/vinci-clips
+   
+   # Google Cloud Storage
+   GCP_BUCKET_NAME=your-bucket-name
+   GCP_SERVICE_ACCOUNT_PATH=./path/to/service-account.json
+   
+   # AI Services
+   GEMINI_API_KEY=your-gemini-api-key
+   ```
 
-4.  **Run the application:**
-    ```bash
-    npm start
-    ```
-    This will start both the backend and frontend servers. The frontend will be available at `http://localhost:3000`.
+4. **Set up Google Cloud Storage**
+   
+   - Create a Google Cloud Storage bucket
+   - Download service account credentials JSON file
+   - Place the file in your backend directory
+   - Update `GCP_SERVICE_ACCOUNT_PATH` in your `.env` file
+
+5. **Start the application**
+   ```bash
+   # Start both frontend and backend
+   npm start
+   
+   # Or start individually:
+   npm run start:backend  # Backend on port 8080
+   npm run start:frontend # Frontend on port 3000
+   ```
+
+6. **Access the application**
+   
+   Open your browser and navigate to `http://localhost:3000`
+
+## Usage
+
+### Basic Workflow
+
+1. **Upload Video**: Drag and drop a video file (up to 2GB) onto the upload interface
+2. **Processing**: The system automatically:
+   - Converts video to audio format
+   - Uploads files to cloud storage
+   - Generates video thumbnails
+   - Creates AI-powered transcription with speaker identification
+3. **Review Transcript**: View the generated transcript with timestamp alignment
+4. **Generate Clips**: Use AI-suggested segments or manually select time ranges for clip creation
+5. **Download Results**: Access generated clips from cloud storage with direct download links
+
+### API Usage
+
+The platform provides a RESTful API for programmatic access:
+
+```javascript
+// Upload a video
+POST /api/upload
+Content-Type: multipart/form-data
+
+// Get transcript status
+GET /api/transcripts/:id
+
+// Generate clip
+POST /api/clips/generate
+{
+  "transcriptId": "...",
+  "startTime": 30,
+  "endTime": 90
+}
+```
+
+For detailed API documentation, see [API Reference](docs/api.md).
+
+## Development
+
+### Project Structure
+
+```
+vinci-clips/
+├── backend/                 # Express.js API server
+│   ├── src/
+│   │   ├── models/         # MongoDB schemas
+│   │   ├── routes/         # API endpoints
+│   │   └── index.js        # Server entry point
+│   └── package.json
+├── frontend/               # Next.js application
+│   ├── src/
+│   │   ├── app/           # App router pages
+│   │   ├── components/    # React components
+│   │   └── lib/           # Utility functions
+│   └── package.json
+├── package.json           # Root package.json for scripts
+└── README.md
+```
+
+### Development Commands
+
+```bash
+# Development
+npm run dev              # Start both services in development mode
+npm run start:backend    # Start backend only
+npm run start:frontend   # Start frontend only
+
+# Production
+npm run build           # Build both applications
+npm start              # Start both services in production mode
+
+# Testing
+npm test               # Run test suites
+npm run lint           # Run ESLint checks
+```
+
+### Testing
+
+```bash
+# Backend tests
+cd backend && npm test
+
+# Frontend tests
+cd frontend && npm test
+
+# End-to-end tests
+npm run test:e2e
+```
+
+## Deployment
+
+### Docker Deployment
+
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
+
+# Production deployment
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Environment Variables
+
+For production deployment, ensure all environment variables are properly configured:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `PORT` | Backend server port | No (default: 8080) |
+| `DB_URL` | MongoDB connection string | Yes |
+| `GCP_BUCKET_NAME` | Google Cloud Storage bucket | Yes |
+| `GCP_SERVICE_ACCOUNT_PATH` | Path to GCS service account JSON | Yes |
+| `GEMINI_API_KEY` | Google Gemini API key | Yes |
+
+## Contributing
+
+We welcome contributions to Vinci Clips! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on:
+
+- Code of conduct
+- Development workflow
+- Pull request process
+- Issue reporting guidelines
+
+### Development Setup
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass (`npm test`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+## Development Status
+
+### Core Platform (Completed)
+- Video upload with drag-and-drop interface (2GB limit)
+- FFmpeg-based video processing and thumbnail generation
+- Google Cloud Storage integration with signed URLs
+- AI transcription using Google Gemini API with speaker diarization
+- MongoDB data persistence with comprehensive status tracking
+- React/Next.js frontend with responsive design
+- Basic clip generation from transcript segments
+
+### Caption System (Recently Added)
+- TikTok/Reels style caption generation with 5 popular styles
+- SRT-based FFmpeg subtitle rendering
+- Word-level timestamp conversion from segment data
+- Caption preview integration in reframe workflow
+
+### Planned Improvements
+
+**High Priority**
+- Enhanced word-level timestamp precision (Issue #19)
+- Advanced caption styles based on social media research (Issue #20)
+- Real-time caption preview with video overlay (Issue #21)
+
+**Medium Priority**
+- Intelligent reframing with subject detection (Issue #22)
+- Smooth camera movement for reframed videos (Issue #23)
+- Smart fallback mechanisms for complex scenarios (Issue #24)
+
+**Future Enhancements**
+- Speaker-aware caption positioning (Issue #25)
+- LLM-enhanced clip suggestion engine (Issue #26)
+- Performance caching for transcripts and ML models (Issue #27)
+- Modular caption style plugin system (Issue #28)
+
+See [GitHub Issues](https://github.com/tryvinci/vinci-clips/issues) for detailed technical specifications and implementation plans.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See the [LICENSE](LICENSE) file for details.
+
+The AGPL-3.0 license ensures that any modifications or derivatives of this software, including those running on servers, must also be made available under the same license terms.
+
+## Support
+
+### Community Support
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/tryvinci/vinci-clips/issues)
+- **Discussions**: [Join community discussions](https://github.com/tryvinci/vinci-clips/discussions)
+- **Documentation**: [Read the full documentation](docs/)
+
+### Commercial Support
+
+For enterprise deployments, custom development, or commercial licensing options, please contact us at [support@tryvinci.com](mailto:support@tryvinci.com).
+
+## Acknowledgments
+
+- **Google Gemini API** for powerful AI transcription capabilities
+- **FFmpeg** for reliable video processing
+- **Next.js** and **Vercel** for excellent development experience
+- **MongoDB** for flexible data storage
+- **Open Source Community** for inspiration and contributions
 
 ---
 
-## Development Roadmap & Status
-
-This section outlines the current implementation status and future development priorities for Vinci Clips.
-
-### ✅ Core Features (Completed)
-
-| Feature Category        | Implementation                                                                                               | Status      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ | ----------- |
-| **Video Upload System** | Drag-and-drop interface with 2GB file size limit and real-time progress tracking                           | **Complete** |
-| **Status Management**   | Comprehensive status tracking: uploading → converting → transcribing → completed/failed                    | **Complete** |
-| **Video Processing**    | FFmpeg-based video-to-MP3 conversion with thumbnail generation                                              | **Complete** |
-| **Cloud Integration**   | Parallel upload to Google Cloud Storage with signed URL generation                                          | **Complete** |
-| **AI Transcription**    | Gemini API transcription with speaker diarization and precise timestamps                                    | **Complete** |
-| **Clip Analysis**       | AI-powered analysis suggesting 3-5 clips with single/multi-segment support                                 | **Complete** |
-| **Clip Generation**     | FFmpeg-based video clip generation with cloud storage integration                                           | **Complete** |
-| **Frontend Interface**  | Homepage with recent videos, status indicators, and detailed transcript view with video playback           | **Complete** |
-| **Database Layer**      | MongoDB with Mongoose ODM, comprehensive data modeling                                                      | **Complete** |
-
-### 🚧 Priority Development Areas
-
-#### **Phase 1: Core Platform Enhancements** (High Priority)
-| Feature                    | Description                                                                                               | Effort      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- |
-| **URL Video Import**       | Import videos from YouTube, Instagram, LinkedIn, Vimeo, TikTok using URLs                               | **High**    |
-| **Clip Generation Fixes**  | Fix routing issues, improve error handling, add progress tracking                                        | **Medium**  |
-| **Enhanced UI/UX**         | Responsive design, better loading states, mobile optimization                                            | **Medium**  |
-| **Performance Optimization** | Background job processing, caching, database indexing                                                  | **High**    |
-
-#### **Phase 2: Advanced Content Features** (Medium Priority)
-| Feature                    | Description                                                                                               | Effort      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- |
-| **Auto-Reframing**         | AI-powered aspect ratio adjustment (9:16, 1:1, 16:9) with MediaPipe subject detection                  | **High**    |
-| **Captioning System**      | Synchronized captions with style customization, SRT export, multi-language support                     | **Medium**  |
-| **AI B-roll Generation**   | Context-aware B-roll creation and seamless integration                                                  | **High**    |
-| **Clip Preview & Editing** | Timeline-based clip editing with trim controls and preview functionality                                | **Medium**  |
-
-#### **Phase 3: Social Media & Publishing** (Lower Priority)
-| Feature                    | Description                                                                                               | Effort      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------- |
-| **Social Media Integration** | Direct publishing to YouTube, TikTok, Instagram, Facebook, LinkedIn, X                                | **High**    |
-| **Content Scheduling**     | Calendar-based scheduling with optimal posting time suggestions                                          | **Medium**  |
-| **AI Metadata Generation** | Automatic captions, hashtags, and descriptions for social posts                                         | **Medium**  |
-| **Analytics Dashboard**    | Performance tracking, engagement metrics, usage analytics                                               | **Medium**  |
-
-### 🔧 Technical Debt & Infrastructure
-
-| Area                       | Priority | Description                                                                                               |
-| -------------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| **Error Handling**         | High     | Comprehensive error handling, user-friendly messages, retry mechanisms                                   |
-| **Testing Suite**          | High     | Unit tests, integration tests, E2E testing with Playwright                                              |
-| **Documentation**          | Medium   | API documentation, deployment guides, developer onboarding                                              |
-| **Security**               | High     | Authentication system, API rate limiting, data encryption                                                |
-| **Monitoring**             | Medium   | Application monitoring, performance metrics, error tracking                                              |
-
-### 📊 Current Implementation Status
-
-- **Backend API:** 8/10 core endpoints implemented
-- **Frontend UI:** 6/8 major components complete  
-- **Database Schema:** Fully implemented with status tracking
-- **Video Processing:** Core pipeline complete, needs optimization
-- **AI Integration:** Transcription and analysis functional
-- **Cloud Storage:** Complete implementation with signed URLs
-
----
-
-## Next Steps Priority Order
-
-1. **Fix clip generation routing issues** and improve error handling
-2. **Implement URL video import** for major platforms  
-3. **Add comprehensive testing suite** and monitoring
-4. **Develop auto-reframing system** for social media optimization
-5. **Build captioning and B-roll features** for content enhancement
-6. **Create social media publishing pipeline** for end-to-end workflow
-
-This roadmap will be updated as development progresses and priorities evolve based on user feedback and market demands. 
+Built by the Vinci team. Made possible by the open source community.
