@@ -6,6 +6,8 @@ const ffmpeg = require('fluent-ffmpeg');
 const { Storage } = require('@google-cloud/storage');
 const Transcript = require('../models/Transcript');
 const logger = require('../utils/logger');
+const axios = require('axios');
+const { exec } = require('child_process'); // Added for shell script execution
 
 const router = express.Router();
 const storage = new Storage();
@@ -256,339 +258,222 @@ function calculateOptimalCrop(detections, targetRatio, videoDimensions) {
     const { width: ratioW, height: ratioH } = targetRatio;
     const targetAspect = ratioW / ratioH;
     
-    logger.info('Starting subject-first crop calculation', {
+    // Different padding strategies based on aspect ratio
+    const isVertical = targetAspect < 1; // 9:16, stories
+    const isSquare = Math.abs(targetAspect - 1) < 0.1; // 1:1
+    
+    // Adjust padding factors for different formats
+    let PADDING_FACTOR, VERTICAL_EXPANSION_FACTOR;
+    
+    if (isVertical) {
+        PADDING_FACTOR = 1.2;
+        VERTICAL_EXPANSION_FACTOR = 2.5;
+    } else if (isSquare) {
+        PADDING_FACTOR = 1.8;
+        VERTICAL_EXPANSION_FACTOR = 1.8;
+    } else {
+        PADDING_FACTOR = 1.6;
+        VERTICAL_EXPANSION_FACTOR = 1.4;
+    }
+
+    logger.info('Starting smart crop calculation', {
         videoWidth,
         videoHeight,
         targetAspect,
-        targetRatioConfig: targetRatio,
-        detectionsCount: detections?.length || 0
+        detectionsCount: detections?.length || 0,
     });
-    
-    // Subject-first approach: Calculate bounding box that encompasses all high-confidence subjects
+
     let subjectBounds = {
-        minX: 1.0,
-        maxX: 0.0,
-        minY: 1.0,
-        maxY: 0.0,
+        minX: videoWidth,
+        maxX: 0,
+        minY: videoHeight,
+        maxY: 0,
         isValid: false
     };
-    
-    let validDetections = 0;
-    const MIN_CONFIDENCE = 0.5; // Increased from 0.1 for better reliability
-    
+
+    // --- ROBUST DETECTION PARSING ---
     if (detections && detections.length > 0) {
-        detections.forEach((detection, index) => {
-            // Enhanced detection filtering
-            if (!detection.confidence || detection.confidence < MIN_CONFIDENCE) {
-                logger.info(`Skipping detection ${index} with low confidence`, {
-                    confidence: detection.confidence,
-                    threshold: MIN_CONFIDENCE
-                });
-                return;
+        detections.forEach(d => {
+            let box;
+            // Handle multiple common face detection formats
+            if (d.box) { // TensorFlow.js format { box: { xMin, yMin, width, height } }
+                 box = { x: d.box.xMin, y: d.box.yMin, width: d.box.width, height: d.box.height };
+            } else if (d.boundingBox) { // MediaPipe format { boundingBox: { left, top, width, height } } (relative)
+                 box = { x: d.boundingBox.left * videoWidth, y: d.boundingBox.top * videoHeight, width: d.boundingBox.width * videoWidth, height: d.boundingBox.height * videoHeight };
             }
-            
-            // Skip detections with negative scores (often false positives)
-            if (detection.score && detection.score < 0) {
-                logger.info(`Skipping detection ${index} with negative score`, {
-                    score: detection.score
-                });
-                return;
-            }
-            
-            let centerX, centerY;
-            
-            if (detection.boundingBox) {
-                // Validate bounding box data
-                const bbox = detection.boundingBox;
-                if (bbox.left < 0 || bbox.top < 0 || bbox.width <= 0 || bbox.height <= 0) {
-                    logger.warn(`Invalid bounding box for detection ${index}`, { bbox });
-                    return;
-                }
-                
-                // Face detection bounding box is in PIXEL coordinates - need to normalize
-                const pixelCenterX = bbox.left + bbox.width / 2;
-                const pixelCenterY = bbox.top + bbox.height / 2;
-                
-                // Validate video dimensions are available
-                if (!videoWidth || !videoHeight || videoWidth <= 0 || videoHeight <= 0) {
-                    logger.error('Invalid video dimensions for normalization', { videoWidth, videoHeight });
-                    return;
-                }
-                
-                // Normalize to 0-1 range
-                centerX = pixelCenterX / videoWidth;
-                centerY = pixelCenterY / videoHeight;
-                
-                logger.info('Face detection processed', {
-                    index,
-                    originalPixelCenter: { x: pixelCenterX, y: pixelCenterY },
-                    normalizedCenter: { x: centerX, y: centerY },
-                    confidence: detection.confidence
-                });
-            } else if (detection.x !== undefined && detection.y !== undefined) {
-                // Pose points are already normalized (0-1)
-                centerX = detection.x;
-                centerY = detection.y;
-                
-                logger.info('Pose detection processed', {
-                    index,
-                    normalizedCenter: { x: centerX, y: centerY },
-                    confidence: detection.confidence
-                });
-            }
-            
-            if (centerX !== undefined && centerY !== undefined && !isNaN(centerX) && !isNaN(centerY)) {
-                // Ensure coordinates are valid
-                centerX = Math.max(0, Math.min(1, centerX));
-                centerY = Math.max(0, Math.min(1, centerY));
-                
-                // Update subject bounding box to encompass this detection
-                subjectBounds.minX = Math.min(subjectBounds.minX, centerX);
-                subjectBounds.maxX = Math.max(subjectBounds.maxX, centerX);
-                subjectBounds.minY = Math.min(subjectBounds.minY, centerY);
-                subjectBounds.maxY = Math.max(subjectBounds.maxY, centerY);
+
+            if (box) {
+                subjectBounds.minX = Math.min(subjectBounds.minX, box.x);
+                subjectBounds.maxX = Math.max(subjectBounds.maxX, box.x + box.width);
+                subjectBounds.minY = Math.min(subjectBounds.minY, box.y);
+                subjectBounds.maxY = Math.max(subjectBounds.maxY, box.y + box.height);
                 subjectBounds.isValid = true;
-                validDetections++;
-                
-                logger.info('Detection added to subject bounds', {
-                    detection: { x: centerX, y: centerY, type: detection.type },
-                    currentBounds: subjectBounds
-                });
             }
         });
     }
-    
-    // Calculate subject area properties
-    let subjectCenterX, subjectCenterY, subjectWidth, subjectHeight;
-    
-    if (subjectBounds.isValid && validDetections > 0) {
-        subjectWidth = subjectBounds.maxX - subjectBounds.minX;
-        subjectHeight = subjectBounds.maxY - subjectBounds.minY;
-        subjectCenterX = subjectBounds.minX + subjectWidth / 2;
-        subjectCenterY = subjectBounds.minY + subjectHeight / 2;
+
+    let cropWidth, cropHeight, cropX, cropY;
+
+    if (subjectBounds.isValid) {
+        logger.info('Valid subject bounds calculated', { subjectBounds });
         
-        // Handle very small subject areas (single points or tightly clustered detections)
-        const MIN_SUBJECT_SIZE = 0.05; // 5% minimum subject area
-        if (subjectWidth < MIN_SUBJECT_SIZE || subjectHeight < MIN_SUBJECT_SIZE) {
-            logger.info('Very small subject area detected, expanding bounds', {
-                originalBounds: { width: subjectWidth, height: subjectHeight },
-                minSize: MIN_SUBJECT_SIZE
-            });
+        const contentWidth = subjectBounds.maxX - subjectBounds.minX;
+        const contentHeight = subjectBounds.maxY - subjectBounds.minY;
+        const contentCenterX = subjectBounds.minX + contentWidth / 2;
+        const contentCenterY = subjectBounds.minY + contentHeight / 2;
+        
+        if (isVertical) {
+            // Special handling for 9:16 videos
+            const paddedWidth = contentWidth * PADDING_FACTOR;
+            const estimatedHeadY = subjectBounds.minY - (contentHeight * 0.3);
+            const upperBodyBottomY = subjectBounds.maxY + (contentHeight * 1.2);
+            const availableHeightForSubject = upperBodyBottomY - estimatedHeadY;
             
-            // Expand around the center to create a reasonable subject area
-            const expandWidth = Math.max(MIN_SUBJECT_SIZE, subjectWidth) / 2;
-            const expandHeight = Math.max(MIN_SUBJECT_SIZE, subjectHeight) / 2;
+            const requiredHeightForWidth = paddedWidth / targetAspect;
+
+            if (requiredHeightForWidth <= availableHeightForSubject * 1.2) {
+                cropWidth = paddedWidth;
+                cropHeight = cropWidth / targetAspect;
+                const idealCenterY = (estimatedHeadY + upperBodyBottomY) / 2;
+                cropY = idealCenterY - cropHeight / 2;
+                cropX = contentCenterX - cropWidth / 2;
+            } else {
+                cropHeight = Math.min(availableHeightForSubject * 1.1, videoHeight * 0.85);
+                cropWidth = cropHeight * targetAspect;
+                cropY = Math.max(0, estimatedHeadY - (cropHeight * 0.15));
+                cropX = contentCenterX - cropWidth / 2;
+            }
             
-            subjectBounds.minX = Math.max(0, subjectCenterX - expandWidth);
-            subjectBounds.maxX = Math.min(1, subjectCenterX + expandWidth);
-            subjectBounds.minY = Math.max(0, subjectCenterY - expandHeight);
-            subjectBounds.maxY = Math.min(1, subjectCenterY + expandHeight);
-            
-            subjectWidth = subjectBounds.maxX - subjectBounds.minX;
-            subjectHeight = subjectBounds.maxY - subjectBounds.minY;
+        } else {
+            // Original logic for square and landscape
+            let paddedWidth = contentWidth * PADDING_FACTOR;
+            let paddedHeight = contentHeight * VERTICAL_EXPANSION_FACTOR;
+
+            if (paddedWidth / paddedHeight > targetAspect) {
+                cropWidth = paddedWidth;
+                cropHeight = cropWidth / targetAspect;
+            } else {
+                cropHeight = paddedHeight;
+                cropWidth = cropHeight * targetAspect;
+            }
+
+            cropX = contentCenterX - cropWidth / 2;
+            cropY = contentCenterY - cropHeight / 2;
         }
-        
-        logger.info('Calculated subject group bounding box', {
-            subjectBounds,
-            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
-            subjectDimensions: { width: subjectWidth, height: subjectHeight },
-            validDetections
-        });
+
     } else {
-        // Fallback to center when no valid detections
-        subjectCenterX = 0.5;
-        subjectCenterY = 0.5;
-        subjectWidth = 0.1; // Small default area
-        subjectHeight = 0.1;
-        
-        logger.warn('No valid detections - using fallback center', {
-            fallbackCenter: { x: subjectCenterX, y: subjectCenterY },
-            fallbackDimensions: { width: subjectWidth, height: subjectHeight }
-        });
-    }
-    
-    // Maximum zoom approach: Calculate largest possible crop that keeps subjects centered
-    // Start with maximum possible crop for the target aspect ratio
-    const videoAspect = videoWidth / videoHeight;
-    const MAX_CROP_RATIO = 0.98; // Use 98% of video dimensions for maximum zoom
-    
-    let maxPossibleWidth, maxPossibleHeight;
-    
-    if (videoAspect > targetAspect) {
-        // Video is wider than target - height is limiting
-        maxPossibleHeight = MAX_CROP_RATIO;
-        maxPossibleWidth = maxPossibleHeight * targetAspect;
-    } else {
-        // Video is taller than target - width is limiting
-        maxPossibleWidth = MAX_CROP_RATIO;
-        maxPossibleHeight = maxPossibleWidth / targetAspect;
-    }
-    
-    logger.info('Maximum possible crop calculated', {
-        videoAspect,
-        targetAspect,
-        maxPossibleCrop: { width: maxPossibleWidth, height: maxPossibleHeight }
-    });
-    
-    // Now determine if we can use the maximum crop while keeping subjects centered
-    // Check if subjects would still be contained with maximum crop centered on subject center
-    let cropWidth = maxPossibleWidth;
-    let cropHeight = maxPossibleHeight;
-    
-    // Calculate where the max crop would be positioned if centered on subjects
-    let idealCropX = subjectCenterX - cropWidth / 2;
-    let idealCropY = subjectCenterY - cropHeight / 2;
-    
-    // Check if this positioning keeps the crop within video bounds
-    if (idealCropX < 0 || idealCropY < 0 || 
-        idealCropX + cropWidth > 1 || idealCropY + cropHeight > 1) {
-        
-        logger.info('Maximum crop cannot be centered on subjects, calculating constrained crop');
-        
-        // Calculate the maximum crop size that can be centered on the subject
-        // Find the limiting dimension based on subject position
-        const maxXRadius = Math.min(subjectCenterX, 1 - subjectCenterX);
-        const maxYRadius = Math.min(subjectCenterY, 1 - subjectCenterY);
-        
-        // Calculate maximum crop that fits within these radii
-        const maxCenteredWidth = 2 * maxXRadius;
-        const maxCenteredHeight = 2 * maxYRadius;
-        
-        // Apply aspect ratio constraint to get final dimensions
-        if (maxCenteredWidth / maxCenteredHeight > targetAspect) {
-            // Width is not the limiting factor, use height
-            cropHeight = maxCenteredHeight;
+        logger.warn('No valid detections found, falling back to center crop.');
+        const videoAspect = videoWidth / videoHeight;
+        if (videoAspect > targetAspect) {
+            cropHeight = videoHeight * 0.9;
             cropWidth = cropHeight * targetAspect;
         } else {
-            // Height is not the limiting factor, use width
-            cropWidth = maxCenteredWidth;
+            cropWidth = videoWidth * 0.9;
             cropHeight = cropWidth / targetAspect;
         }
-        
-        logger.info('Calculated constrained crop for subject centering', {
-            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
-            maxRadii: { x: maxXRadius, y: maxYRadius },
-            constrainedCrop: { width: cropWidth, height: cropHeight }
-        });
+        cropX = (videoWidth - cropWidth) / 2;
+        cropY = (videoHeight - cropHeight) / 2;
+    }
+
+    // Safety constraints
+    cropWidth = Math.min(cropWidth, videoWidth);
+    cropHeight = Math.min(cropHeight, videoHeight);
+    
+    cropX = Math.max(0, Math.min(cropX, videoWidth - cropWidth));
+    cropY = Math.max(0, Math.min(cropY, videoHeight - cropHeight));
+
+    if (isVertical && cropY + cropHeight > videoHeight) {
+        cropY = Math.max(0, videoHeight - cropHeight);
     }
     
-    // Perfect centering: Position crop exactly centered on subject center
-    let cropX = subjectCenterX - cropWidth / 2;
-    let cropY = subjectCenterY - cropHeight / 2;
-    
-    logger.info('Maximum zoom crop positioned for perfect subject centering', {
-        subjectCenter: { x: subjectCenterX, y: subjectCenterY },
-        cropDimensions: { width: cropWidth, height: cropHeight },
-        cropPosition: { x: cropX, y: cropY },
-        zoomLevel: `${Math.round((1 / Math.max(cropWidth, cropHeight)) * 100)}%`
-    });
-    
-    // Convert to pixel coordinates (ensure even numbers for video encoding)
-    let pixelWidth = Math.floor(cropWidth * videoWidth / 2) * 2;
-    let pixelHeight = Math.floor(cropHeight * videoHeight / 2) * 2;
-    let pixelX = Math.floor(cropX * videoWidth / 2) * 2;
-    let pixelY = Math.floor(cropY * videoHeight / 2) * 2;
-    
-    // Apply minimal safety margin only if absolutely necessary
-    const pixelSafetyMargin = 2; // 2 pixel margin for encoding compatibility
-    
-    // Ensure we don't exceed video bounds with safety margin
-    if (pixelX + pixelWidth > videoWidth - pixelSafetyMargin) {
-        pixelX = videoWidth - pixelWidth - pixelSafetyMargin;
-    }
-    if (pixelY + pixelHeight > videoHeight - pixelSafetyMargin) {
-        pixelY = videoHeight - pixelHeight - pixelSafetyMargin;
-    }
-    
-    // Ensure we don't go below safety margin
-    pixelX = Math.max(pixelSafetyMargin, pixelX);
-    pixelY = Math.max(pixelSafetyMargin, pixelY);
-    
-    // Ensure minimum dimensions for encoding compatibility
-    pixelWidth = Math.max(pixelWidth, 32);
-    pixelHeight = Math.max(pixelHeight, 32);
-    
-    // Verify and correct aspect ratio at pixel level
-    const pixelAspect = pixelWidth / pixelHeight;
-    if (Math.abs(pixelAspect - targetAspect) > 0.01) {
-        logger.info('Correcting pixel aspect ratio', {
-            pixelAspect,
-            targetAspect,
-            originalPixelWidth: pixelWidth,
-            originalPixelHeight: pixelHeight
-        });
-        
-        if (pixelAspect > targetAspect) {
-            pixelWidth = Math.floor(pixelHeight * targetAspect / 2) * 2;
-        } else {
-            pixelHeight = Math.floor(pixelWidth / targetAspect / 2) * 2;
-        }
-    }
-    
-    // Final bounds validation
-    pixelX = Math.max(0, Math.min(pixelX, videoWidth - pixelWidth));
-    pixelY = Math.max(0, Math.min(pixelY, videoHeight - pixelHeight));
-    
-    // Final validation: Verify subject bounds are contained in final crop
-    const subjectPixelBounds = {
-        minX: Math.round(subjectBounds.minX * videoWidth),
-        maxX: Math.round(subjectBounds.maxX * videoWidth),
-        minY: Math.round(subjectBounds.minY * videoHeight),
-        maxY: Math.round(subjectBounds.maxY * videoHeight)
-    };
-    
-    const cropPixelBounds = {
-        left: pixelX,
-        right: pixelX + pixelWidth,
-        top: pixelY,
-        bottom: pixelY + pixelHeight
-    };
-    
-    const subjectFullyContained = subjectBounds.isValid ? (
-        subjectPixelBounds.minX >= cropPixelBounds.left &&
-        subjectPixelBounds.maxX <= cropPixelBounds.right &&
-        subjectPixelBounds.minY >= cropPixelBounds.top &&
-        subjectPixelBounds.maxY <= cropPixelBounds.bottom
-    ) : true; // If no detections, consider it contained
-    
+    const finalWidth = Math.floor(cropWidth / 2) * 2;
+    const finalHeight = Math.floor(cropHeight / 2) * 2;
+    const finalX = Math.floor(cropX / 2) * 2;
+    const finalY = Math.floor(cropY / 2) * 2;
+
     const result = {
-        width: pixelWidth,
-        height: pixelHeight,
-        x: pixelX,
-        y: pixelY,
-        centerX: Math.round(subjectCenterX * videoWidth),
-        centerY: Math.round(subjectCenterY * videoHeight),
-        zoomFactor: 1.0 / Math.max(cropWidth, cropHeight)
+        width: finalWidth,
+        height: finalHeight,
+        x: finalX,
+        y: finalY,
+        centerX: Math.round(finalX + finalWidth / 2),
+        centerY: Math.round(finalY + finalHeight / 2),
+        zoomFactor: videoWidth / finalWidth
     };
     
-    logger.info('Subject-first crop calculation completed', {
-        algorithm: 'subject-first',
-        videoDimensions: { width: videoWidth, height: videoHeight },
-        targetAspect,
-        subjectAnalysis: {
-            validDetections,
-            subjectBounds: subjectBounds.isValid ? subjectBounds : 'fallback',
-            subjectCenter: { x: subjectCenterX, y: subjectCenterY },
-            subjectDimensions: { width: subjectWidth, height: subjectHeight }
-        },
-        cropAnalysis: {
-            normalizedCrop: { x: cropX, y: cropY, width: cropWidth, height: cropHeight },
-            pixelCrop: { x: pixelX, y: pixelY, width: pixelWidth, height: pixelHeight },
-            subjectFullyContained
-        },
-        result
-    });
-    
-    if (!subjectFullyContained && subjectBounds.isValid) {
-        logger.warn('ATTENTION: Subject may not be fully contained in final crop', {
-            subjectPixelBounds,
-            cropPixelBounds,
-            recommendation: 'Review detection accuracy or adjust algorithm parameters'
-        });
-    }
-    
+    logger.info('Smart crop calculation complete', { result });
+
     return result;
 }
+
+/**
+ * Generates a dynamic FFmpeg crop filter string that changes based on speaker timestamps.
+ * This function creates "hard cuts" between speakers.
+ * @param {Array} transcriptSegments - The transcript data with speaker and timing info.
+ * @param {Array} detections - The face detection data.
+ * @param {Object} targetRatio - The target aspect ratio configuration.
+ * @param {Object} videoDimensions - The original video width and height.
+ * @returns {String|null} A dynamic FFmpeg filter string or null if it cannot be generated.
+ */
+function generateDirectorCutFilter(transcriptSegments, detections, targetRatio, videoDimensions) {
+    if (!transcriptSegments || transcriptSegments.length === 0 || !detections || detections.length === 0) {
+        logger.warn('Cannot generate director cut filter: missing transcript or detections.');
+        return null;
+    }
+
+    // 1. Map Speakers to Faces
+    const faces = detections
+        .map(d => d.boundingBox ? { ...d.boundingBox, ...d } : null)
+        .filter(Boolean)
+        .sort((a, b) => a.left - b.left); // Sort faces from left to right on screen
+
+    const speakerLabels = [...new Set(transcriptSegments.map(s => s.speaker))].sort();
+    const speakerFaceMap = {};
+    speakerLabels.forEach((label, index) => {
+        if (faces[index]) {
+            speakerFaceMap[label] = faces[index];
+        }
+    });
+
+    logger.info('Speaker to face mapping created', { speakerFaceMap });
+    
+    // 2. Generate crop parameters for each speaker and a default wide shot
+    const individualCropParams = {};
+    for (const speaker in speakerFaceMap) {
+        const face = speakerFaceMap[speaker];
+        // Create a fake detection array with just one face to reuse our smart crop logic
+        individualCropParams[speaker] = calculateOptimalCrop([face], targetRatio, videoDimensions);
+    }
+    // Default wide shot that contains all detected faces
+    individualCropParams['default'] = calculateOptimalCrop(detections, targetRatio, videoDimensions);
+
+    // 3. Build the time-based filter expressions
+    let wExpr = '', hExpr = '', xExpr = '', yExpr = '';
+    const fallback = individualCropParams['default'];
+
+    transcriptSegments.forEach(segment => {
+        const params = individualCropParams[segment.speaker] || fallback;
+        const start = parseFloat(segment.start.split(':').reduce((acc, time) => (60 * acc) + +time, 0));
+        const end = parseFloat(segment.end.split(':').reduce((acc, time) => (60 * acc) + +time, 0));
+
+        wExpr += `if(between(t,${start},${end}),${params.width},`;
+        hExpr += `if(between(t,${start},${end}),${params.height},`;
+        xExpr += `if(between(t,${start},${end}),${params.x},`;
+        yExpr += `if(between(t,${start},${end}),${params.y},`;
+    });
+    
+    wExpr += `${fallback.width}` + ')'.repeat(transcriptSegments.length);
+    hExpr += `${fallback.height}` + ')'.repeat(transcriptSegments.length);
+    xExpr += `${fallback.x}` + ')'.repeat(transcriptSegments.length);
+    yExpr += `${fallback.y}` + ')'.repeat(transcriptSegments.length);
+
+    const filterString = `crop=w='${wExpr}':h='${hExpr}':x='${xExpr}':y='${yExpr}'`;
+    
+    logger.info('Generated dynamic director cut filter string.', { length: filterString.length });
+
+    return filterString;
+}
+
 
 /**
  * Generate a preview frame with crop overlay
@@ -1034,11 +919,29 @@ router.post('/generate', async (req, res) => {
         });
         
         // Build video filters
-        const videoFilters = [`crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`];
         let srtPath = null;
+        let finalFilter;
+        let cropFilter;
         
-        // Add captions if requested
-        if (captions && captions.enabled && captions.style) {
+        // --- Dynamic Director Cut Logic ---
+        if (captions && captions.enabled && transcript.transcript && req.body.detections) {
+            logger.info('Attempting to generate Director Cut filter.');
+            const directorFilter = generateDirectorCutFilter(transcript.transcript, req.body.detections, targetRatio, videoDimensions);
+            if (directorFilter) {
+                finalFilter = directorFilter;
+                logger.info('Using dynamic Director Cut filter.');
+            } else {
+                logger.warn('Fallback to static crop: Director Cut filter could not be generated.');
+                cropFilter = `crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`;
+            }
+        } else {
+            logger.info('Using static crop filter.');
+            cropFilter = `crop=${cropParameters.width}:${cropParameters.height}:${cropParameters.x}:${cropParameters.y}`;
+        }
+
+
+        // Captioning logic
+        if (captions && captions.enabled) {
             const transcript = await Transcript.findById(transcriptId);
             if (transcript && transcript.transcript && transcript.transcript.length > 0) {
                 srtPath = buildCaptionFilter(transcript.transcript, captions.style);
@@ -1055,14 +958,14 @@ router.post('/generate', async (req, res) => {
                     
                     const style = styleConfig[captions.style] || styleConfig['bold-center'];
                     const subtitleFilter = `subtitles=${srtPath}:force_style='FontName=Arial,FontSize=${style.fontsize},PrimaryColour=${convertColorToASS(style.fontcolor)},OutlineColour=${convertColorToASS(style.bordercolor)},Outline=${style.borderw},Alignment=2,MarginV=80'`;
-                    videoFilters.push(subtitleFilter);
+                    finalFilter = finalFilter ? `${finalFilter},${subtitleFilter}` : subtitleFilter;
                 }
             }
         }
 
         // Build FFmpeg command - no timing needed since we're processing the entire generated clip
         const command = ffmpeg(tempVideoPath)
-            .videoFilters(videoFilters)
+            .videoFilters(finalFilter ? [finalFilter] : [cropFilter])
             .outputOptions([
                 '-c:v libx264',
                 '-crf 23',
@@ -1245,5 +1148,316 @@ router.post('/adjust', async (req, res) => {
         });
     }
 });
+
+/**
+ * Process streamer + gameplay crop
+ * POST /clips/reframe/streamer-gameplay
+ */
+router.post('/streamer-gameplay', async (req, res) => {
+  try {
+    const { 
+      transcriptId, 
+      webcamArea, 
+      gameplayArea, 
+      webcamScale, 
+      webcamPosition,
+      outputName 
+    } = req.body;
+    
+    if (!transcriptId || !webcamArea || !gameplayArea) {
+      return res.status(400).json({ 
+        error: 'Transcript ID, webcam area, and gameplay area are required' 
+      });
+    }
+    
+    const transcript = await Transcript.findById(transcriptId);
+    if (!transcript) {
+      return res.status(404).json({ error: 'Transcript not found' });
+    }
+    
+    // Create temporary directories
+    const tempDir = 'uploads/temp';
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // Create temporary file paths with fixed naming for debugging
+    const timestamp = Date.now();
+    const tempVideoPath = path.join(tempDir, `source_${timestamp}.mp4`);
+    const tempWebcamPath = path.join(tempDir, `webcam_${timestamp}.mp4`);
+    const tempGameplayPath = path.join(tempDir, `gameplay_${timestamp}.mp4`);
+    const finalOutputPath = path.join(tempDir, `final_${timestamp}.mp4`);
+    const outputFilename = outputName || `streamer_gameplay_${timestamp}.mp4`;
+    const publicOutputPath = path.join(tempDir, outputFilename);
+    
+    // Download video directly using the URL from transcript
+    logger.info('Downloading video for streamer gameplay processing', { 
+      transcriptId,
+      videoUrl: transcript.videoUrl,
+      tempVideoPath
+    });
+    
+    try {
+      // Use axios to download the video directly from the URL
+      const response = await axios({
+        method: 'GET',
+        url: transcript.videoUrl,
+        responseType: 'stream',
+        timeout: 300000 // 5 minutes timeout
+      });
+      
+      const writer = fs.createWriteStream(tempVideoPath);
+      response.data.pipe(writer);
+      
+      await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+      
+      logger.info('Video downloaded successfully', { tempVideoPath });
+    } catch (downloadError) {
+      logger.error('Failed to download video:', downloadError.message);
+      return res.status(500).json({
+        error: 'Failed to download video',
+        details: downloadError.message
+      });
+    }
+    
+    // Get video duration
+    const videoDuration = await new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(tempVideoPath, (err, metadata) => {
+        if (err) return reject(err);
+        const duration = metadata.format.duration || 0;
+        resolve(duration);
+      });
+    });
+    
+    logger.info('Video duration:', { videoDuration });
+    
+    // Step 1: Extract webcam area
+    logger.info('Extracting webcam area', { webcamArea });
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempVideoPath)
+        .outputOptions([
+          '-c:v libx264',
+          '-crf 23',
+          '-preset ultrafast'
+        ])
+        .videoFilters([
+          `crop=${webcamArea.width}:${webcamArea.height}:${webcamArea.x}:${webcamArea.y}`
+        ])
+        .noAudio()
+        .output(tempWebcamPath)
+        .on('end', resolve)
+        .on('error', (err) => {
+          logger.error('Webcam extraction error:', err.message);
+          reject(err);
+        })
+        .run();
+    });
+    
+    // Step 2: Extract gameplay area
+    logger.info('Extracting gameplay area', { gameplayArea });
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempVideoPath)
+        .outputOptions([
+          '-c:v libx264',
+          '-crf 23',
+          '-preset ultrafast'
+        ])
+        .videoFilters([
+          `crop=${gameplayArea.width}:${gameplayArea.height}:${gameplayArea.x}:${gameplayArea.y}`
+        ])
+        .noAudio()
+        .output(tempGameplayPath)
+        .on('end', resolve)
+        .on('error', (err) => {
+          logger.error('Gameplay extraction error:', err.message);
+          reject(err);
+        })
+        .run();
+    });
+    
+    // Calculate output dimensions for 9:16 aspect ratio
+    const outputWidth = 720; // Reduced for better performance
+    const outputHeight = 1280; // 9:16 ratio
+    
+    // Calculate webcam and gameplay heights
+    const webcamHeight = Math.round((outputHeight * webcamScale) / 100);
+    const webcamY = Math.round((outputHeight * webcamPosition) / 100);
+    const gameplayY = webcamY + webcamHeight;
+    
+    // Step 3: Create a script to combine the videos using ffmpeg command line
+    // This is more reliable than complex filters
+    const scriptPath = path.join(tempDir, `combine_script_${timestamp}.sh`);
+    
+    // Create a script that uses ffmpeg directly - with more explicit positioning
+    const ffmpegCommand = `
+#!/bin/bash
+# Get video dimensions
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 ${tempVideoPath} > ${tempDir}/dimensions_${timestamp}.txt
+SOURCE_WIDTH=\$(cat ${tempDir}/dimensions_${timestamp}.txt | cut -d',' -f1)
+SOURCE_HEIGHT=\$(cat ${tempDir}/dimensions_${timestamp}.txt | cut -d',' -f2)
+
+echo "Source dimensions: \$SOURCE_WIDTH x \$SOURCE_HEIGHT"
+
+# Create a black background with same duration as source
+ffmpeg -y -f lavfi -i color=c=black:s=${outputWidth}x${outputHeight} -t ${videoDuration} ${tempDir}/bg_${timestamp}.mp4
+
+# Extract frames from webcam and gameplay for debugging
+ffmpeg -y -i ${tempWebcamPath} -vframes 1 ${tempDir}/webcam_frame_${timestamp}.jpg
+ffmpeg -y -i ${tempGameplayPath} -vframes 1 ${tempDir}/gameplay_frame_${timestamp}.jpg
+
+# Scale webcam to fit width
+WEBCAM_SCALED_WIDTH=${outputWidth}
+WEBCAM_SCALED_HEIGHT=\$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 ${tempWebcamPath} | xargs -I {} echo "scale=2; {} * ${outputWidth} / \$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 ${tempWebcamPath})" | bc | xargs printf "%.0f")
+echo "Webcam scaled dimensions: \$WEBCAM_SCALED_WIDTH x \$WEBCAM_SCALED_HEIGHT"
+
+# Scale gameplay to fit width
+GAMEPLAY_SCALED_WIDTH=${outputWidth}
+GAMEPLAY_SCALED_HEIGHT=\$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 ${tempGameplayPath} | xargs -I {} echo "scale=2; {} * ${outputWidth} / \$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 ${tempGameplayPath})" | bc | xargs printf "%.0f")
+echo "Gameplay scaled dimensions: \$GAMEPLAY_SCALED_WIDTH x \$GAMEPLAY_SCALED_HEIGHT"
+
+# Create a single command that does all the work
+ffmpeg -y \\
+  -i ${tempVideoPath} \\
+  -i ${tempWebcamPath} \\
+  -i ${tempGameplayPath} \\
+  -filter_complex "
+    [1:v]scale=${outputWidth}:-1[webcam_scaled];
+    [2:v]scale=${outputWidth}:-1[gameplay_scaled];
+    color=black:s=${outputWidth}x${outputHeight}:d=${videoDuration}[bg];
+    [bg][webcam_scaled]overlay=0:${webcamY}[with_webcam];
+    [with_webcam][gameplay_scaled]overlay=0:${gameplayY}
+  " \\
+  -map 0:a \\
+  -c:v libx264 -crf 23 -preset medium \\
+  -c:a aac -b:a 128k \\
+  ${finalOutputPath}
+
+# Create a copy with the requested filename for direct download
+cp ${finalOutputPath} ${publicOutputPath}
+
+echo "Finished processing. Output at: ${finalOutputPath} and ${publicOutputPath}"
+`;
+    
+    fs.writeFileSync(scriptPath, ffmpegCommand);
+    fs.chmodSync(scriptPath, '755');
+    
+    // Execute the script
+    logger.info('Running ffmpeg script to combine videos');
+    await new Promise((resolve, reject) => {
+      exec(`bash ${scriptPath}`, (error, stdout, stderr) => {
+        if (error) {
+          logger.error('Script execution error:', error.message);
+          logger.error('Script stderr:', stderr);
+          reject(error);
+        } else {
+          logger.info('Script output:', stdout);
+          resolve(stdout);
+        }
+      });
+    });
+    
+    // Check if the output files exist
+    if (!fs.existsSync(finalOutputPath)) {
+      logger.error('Output file not created', { finalOutputPath });
+      return res.status(500).json({
+        error: 'Failed to create output file',
+        details: 'The ffmpeg process did not generate an output file'
+      });
+    }
+    
+    if (!fs.existsSync(publicOutputPath)) {
+      logger.error('Public output file not created', { publicOutputPath });
+      // Copy it again if it doesn't exist
+      fs.copyFileSync(finalOutputPath, publicOutputPath);
+    }
+    
+    logger.info('Output files created successfully', { 
+      finalOutputPath,
+      publicOutputPath
+    });
+    
+    // Upload processed video to cloud storage
+    const cloudPath = `clips/streamer_gameplay/${outputFilename}`;
+    await bucket.upload(finalOutputPath, {
+      destination: cloudPath,
+      metadata: {
+        cacheControl: 'public, max-age=86400',
+        metadata: {
+          transcriptId,
+          originalVideo: transcript.originalFilename
+        }
+      }
+    });
+    
+    // Get a signed URL for the uploaded file
+    const [processedVideoUrl] = await bucket.file(cloudPath).getSignedUrl({
+      action: 'read',
+      expires: '03-09-2491'
+    });
+    
+    // Create a local URL for direct download
+    const localDownloadUrl = `/clips/download/${outputFilename}`;
+    
+    // Don't delete the files immediately for debugging purposes
+    // We'll let them be cleaned up by the system later
+    logger.info('Files created for debugging:', {
+      tempVideoPath,
+      tempWebcamPath,
+      tempGameplayPath,
+      finalOutputPath,
+      publicOutputPath,
+      scriptPath
+    });
+    
+    res.json({
+      success: true,
+      processedVideoUrl,
+      localDownloadUrl,
+      outputName: outputFilename,
+      debugFiles: {
+        tempVideoPath,
+        tempWebcamPath,
+        tempGameplayPath,
+        finalOutputPath,
+        publicOutputPath,
+        scriptPath
+      }
+    });
+    
+  } catch (error) {
+    logger.error(error.message, { context: 'streamer_gameplay_processing', stack: error.stack });
+    res.status(500).json({
+      error: 'Failed to process streamer + gameplay video',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * Download a processed video file directly
+ * GET /clips/download/:filename
+ */
+router.get('/download/:filename', (req, res) => {
+  const { filename } = req.params;
+  const filePath = path.join('uploads/temp', filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  
+  // Set headers for download
+  res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+  res.setHeader('Content-Type', 'video/mp4');
+  
+  // Stream the file
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(res);
+});
+
+// Serve static files from uploads/temp directory
+router.use('/temp', express.static(path.join(__dirname, '../../uploads/temp')));
 
 module.exports = router;

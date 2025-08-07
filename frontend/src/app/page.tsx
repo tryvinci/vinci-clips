@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe } from 'lucide-react';
+import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 interface Transcript {
@@ -199,6 +199,23 @@ export default function Home() {
     }
   };
 
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation(); // Prevent event bubbling
+    
+    if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+      try {
+        await axios.delete(`http://localhost:8080/clips/transcripts/${id}`);
+        // Remove the deleted transcript from the state
+        setRecentTranscripts(prev => prev.filter(t => t._id !== id));
+        setMessage('Video deleted successfully');
+      } catch (error) {
+        console.error('Error deleting video:', error);
+        setMessage('Failed to delete video');
+      }
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background p-8">
       <div className="max-w-6xl mx-auto">
@@ -308,7 +325,13 @@ export default function Home() {
                 <Card key={transcript._id} className="hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg truncate pr-2">{transcript.originalFilename}</CardTitle>
+                      <div className="flex items-center">
+                        <CardTitle className="text-lg truncate pr-2">{transcript.originalFilename}</CardTitle>
+                        <Trash2 
+                          className="h-4 w-4 text-red-500 cursor-pointer ml-2 hover:text-red-700" 
+                          onClick={(e) => handleDelete(transcript._id, e)}
+                        />
+                      </div>
                       {getStatusIcon(transcript.status)}
                     </div>
                   </CardHeader>

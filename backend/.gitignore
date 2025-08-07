@@ -51,3 +51,5 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# Google Cloud service account
+src/vinci-service-account.json

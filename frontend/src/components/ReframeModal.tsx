@@ -246,6 +246,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
         transcriptId,
         targetPlatform: selectedPlatform,
         cropParameters,
+        detections: detections, // Pass detections through
         outputName: outputName,
         generatedClipUrl: generatedClipUrl, // Use generated clip instead of timing
         captions: addCaptions ? {
