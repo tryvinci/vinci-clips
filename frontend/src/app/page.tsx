@@ -317,7 +317,12 @@ export default function LandingPage() {
           {/* <a href="#" className="nav-link">Solutions</a>
           <a href="#" className="nav-link">Resources</a>
           <a href="#" className="nav-link">Artemis</a> */}
-          <button className="cta-button">Try Other Vinci Apps</button>
+          <button
+            className="cta-button"
+            onClick={() => window.open("https://app.tryvinci.com", "_blank")}>
+            Try Other Vinci Apps
+          </button>
+
         </nav>
       </header>
 
@@ -326,12 +331,12 @@ export default function LandingPage() {
         <div className="hero-badge fade-in">Open Source Video Tools</div>
         
         <h1 ref={titleRef} className="hero-title fade-in">
-          Vinci Clips<br/>
+          Clips By Vinci<br/>
           <span style={{color: '#14b8a6'}}>free & open-source Video to Reels Editor</span><br/>
         </h1>
         
         <p className="hero-subtitle fade-in">
-          Vinci Clips is an open-source AI tool that turns long videos into engaging, reel-ready and shorts-ready content.
+          Clips is an open-source AI tool that turns long videos into engaging, reel-ready and shorts-ready content.
           With full transparency, you have complete control over your clips and workflow.
           Perfect for creators, brands, and educators looking to repurpose content into viral-ready highlights in minutes.
         </p>
