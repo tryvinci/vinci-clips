@@ -1,371 +1,376 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe, Trash2 } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 
-interface Transcript {
-  _id: string;
-  originalFilename: string;
-  createdAt: string;
-  status?: 'uploading' | 'converting' | 'transcribing' | 'completed' | 'failed';
-  duration?: number;
-  thumbnailUrl?: string;
-}
-
-export default function Home() {
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [progressText, setProgressText] = useState('');
-  const [message, setMessage] = useState('');
-  const [recentTranscripts, setRecentTranscripts] = useState<Transcript[]>([]);
-  const [loadingTranscripts, setLoadingTranscripts] = useState(true);
-  const [importUrl, setImportUrl] = useState('');
-  const [importMode, setImportMode] = useState<'file' | 'url'>('file');
+export default function LandingPage() {
+  const titleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    const fetchRecentTranscripts = async () => {
-      try {
-        const response = await axios.get('http://localhost:8080/clips/transcripts');
-        setRecentTranscripts(response.data.slice(0, 6)); // Show only 6 most recent
-      } catch (err) {
-        console.error('Failed to fetch recent transcripts:', err);
-      } finally {
-        setLoadingTranscripts(false);
-      }
-    };
+    // Add button click animations
+    const buttons = document.querySelectorAll('.primary-button, .secondary-button');
+    buttons.forEach(button => {
+      const handleClick = function(this: Element) {
+        (this as HTMLElement).style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          (this as HTMLElement).style.transform = '';
+        }, 150);
+      };
+      
+      button.addEventListener('click', handleClick);
+    });
 
-    fetchRecentTranscripts();
-
-    // Set up polling for status updates only if there are processing videos
-    const checkForProcessingVideos = () => {
-      return recentTranscripts.some(transcript => 
-        transcript.status && !['completed', 'failed'].includes(transcript.status)
-      );
-    };
-
-    let interval: NodeJS.Timeout | null = null;
-    
-    if (checkForProcessingVideos()) {
-      interval = setInterval(fetchRecentTranscripts, 10000); // Poll every 10 seconds
-    }
-
+    // Cleanup event listeners
     return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [recentTranscripts]);
-
-  const getStatusIcon = (status: string | undefined) => {
-    // If status is undefined, assume it's a completed older record
-    if (!status) {
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    }
-    
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'failed':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'uploading':
-      case 'converting':
-      case 'transcribing':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getStatusBadge = (status: string | undefined) => {
-    // If status is undefined, assume it's a completed older record
-    if (!status) {
-      return <Badge variant="default">Ready</Badge>;
-    }
-    
-    const statusConfig = {
-      uploading: { label: 'Uploading', variant: 'secondary' as const },
-      converting: { label: 'Converting', variant: 'secondary' as const },
-      transcribing: { label: 'Transcribing', variant: 'secondary' as const },
-      completed: { label: 'Ready', variant: 'default' as const },
-      failed: { label: 'Failed', variant: 'destructive' as const },
-    };
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || { label: 'Unknown', variant: 'secondary' as const };
-    return <Badge variant={config.variant}>{config.label}</Badge>;
-  };
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      await handleUpload(files[0]);
-    }
-  };
-
-  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const files = event.dataTransfer.files;
-    if (files && files.length > 0) {
-      await handleUpload(files[0]);
-    }
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-  };
-  
-  const handleUpload = async (file: File) => {
-    if (file.size > 2 * 1024 * 1024 * 1024) {
-        setMessage('File is too large. Please upload a file smaller than 2GB.');
-        return;
-    }
-
-    setUploading(true);
-    setUploadProgress(0);
-    setProgressText('');
-    setMessage('Connecting to server...');
-
-    const formData = new FormData();
-    formData.append('video', file);
-
-    // Remove EventSource logic for upload progress for now to simplify
-    try {
-      setMessage('Uploading and processing...');
-      const response = await axios.post('http://localhost:8080/clips/upload/file', formData, {
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentCompleted);
-            
-            const loadedMB = (progressEvent.loaded / (1024 * 1024)).toFixed(2);
-            const totalMB = (progressEvent.total / (1024 * 1024)).toFixed(2);
-            setProgressText(`${loadedMB} MB / ${totalMB} MB`);
-
-            if (percentCompleted < 100) {
-              setMessage(`Uploading...`);
-            } else {
-              setMessage('Processing video... this may take a moment.');
-            }
-          }
-        },
+      buttons.forEach(button => {
+        button.removeEventListener('click', () => {});
       });
-      setMessage('Analysis complete!');
-      console.log(response.data);
-      // Refresh the recent transcripts list
-      const refreshResponse = await axios.get('http://localhost:8080/clips/transcripts');
-      setRecentTranscripts(refreshResponse.data.slice(0, 6));
+    };
+  }, []);
 
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      setMessage('Upload failed. Please try again.');
-    } finally {
-        setUploading(false);
-    }
+  const handleTryBeta = () => {
+    // Navigate to the upload page (your current functionality)
+    window.location.href = '/upload';
   };
 
-  const handleUrlImport = async () => {
-    if (!importUrl.trim()) {
-      setMessage('Please enter a valid URL.');
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress(0);
-    setProgressText('');
-    setMessage('Extracting video information...');
-
-    try {
-      const response = await axios.post('http://localhost:8080/clips/import/url', {
-        url: importUrl.trim()
-      });
-      
-      setMessage('Video imported successfully!');
-      setImportUrl('');
-      console.log(response.data);
-      
-      // Refresh the recent transcripts list
-      const refreshResponse = await axios.get('http://localhost:8080/clips/transcripts');
-      setRecentTranscripts(refreshResponse.data.slice(0, 6));
-
-    } catch (error: any) {
-      console.error('Error importing URL:', error);
-      const errorMessage = error.response?.data?.error || 'Failed to import video from URL.';
-      setMessage(errorMessage);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation
-    e.stopPropagation(); // Prevent event bubbling
-    
-    if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
-      try {
-        await axios.delete(`http://localhost:8080/clips/transcripts/${id}`);
-        // Remove the deleted transcript from the state
-        setRecentTranscripts(prev => prev.filter(t => t._id !== id));
-        setMessage('Video deleted successfully');
-      } catch (error) {
-        console.error('Error deleting video:', error);
-        setMessage('Failed to delete video');
-      }
-    }
+  const handleGitHub = () => {
+    window.open('https://github.com/tryvinci/vinci-clips', '_blank');
   };
 
   return (
-    <main className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <Card className="w-full max-w-2xl mx-auto mb-12">
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold">Create a New Clip</CardTitle>
-            <CardDescription>Upload your video or import from URL, and our AI will find the best moments.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Mode Selection */}
-            <div className="flex gap-2 mb-6">
-              <Button 
-                variant={importMode === 'file' ? 'default' : 'outline'}
-                onClick={() => setImportMode('file')}
-                className="flex items-center gap-2"
-              >
-                <UploadCloud className="h-4 w-4" />
-                Upload File
-              </Button>
-              <Button 
-                variant={importMode === 'url' ? 'default' : 'outline'}
-                onClick={() => setImportMode('url')}
-                className="flex items-center gap-2"
-              >
-                <LinkIcon className="h-4 w-4" />
-                Import URL
-              </Button>
-            </div>
+    <>
+      <style jsx global>{`
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
 
-            {importMode === 'file' ? (
-              <div 
-                className="border-2 border-dashed border-muted rounded-lg p-12 text-center cursor-pointer"
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onClick={() => document.getElementById('file-upload')?.click()}
-              >
-                <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-4 text-muted-foreground">Drag & drop a video file here, or click to select a file</p>
-                <p className="text-xs text-muted-foreground mt-2">Max file size: 2GB. Supported formats: MP4, MOV, AVI, etc.</p>
-                <input
-                  id="file-upload"
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  accept="video/*"
-                />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center">
-                  <Globe className="mx-auto h-12 w-12 text-muted-foreground" />
-                  <p className="mt-4 text-muted-foreground">Import video from URL</p>
-                  <p className="text-xs text-muted-foreground mt-2">Supported platforms: YouTube, Vimeo</p>
-                  <div className="mt-4 flex gap-2">
-                    <input
-                      type="url"
-                      placeholder="Paste video URL here..."
-                      value={importUrl}
-                      onChange={(e) => setImportUrl(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-input rounded-md text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                      disabled={uploading}
-                    />
-                    <Button 
-                      onClick={handleUrlImport}
-                      disabled={uploading || !importUrl.trim()}
-                    >
-                      Import
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
+        body {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+          color: #ffffff;
+          min-height: 100vh;
+          overflow-x: hidden;
+        }
 
-            {uploading && (
-              <div className="mt-4">
-                <Progress value={uploadProgress} />
-                <p className="mt-2 text-center text-muted-foreground">{message} {progressText && `(${progressText})`}</p>
-              </div>
-            )}
-            {!uploading && message && (
-              <p className="mt-4 text-center text-muted-foreground">{message}</p>
-            )}
-          </CardContent>
-        </Card>
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-20px) rotate(180deg); }
+        }
 
-        <div className="w-full">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Recent Videos</h2>
-            <Button asChild variant="outline">
-              <Link href="/clips/transcripts">View All</Link>
-            </Button>
-          </div>
-          
-          {loadingTranscripts ? (
-            <div className="flex justify-center items-center h-32">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
-          ) : recentTranscripts.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <p className="text-muted-foreground">No videos uploaded yet. Upload your first video above!</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recentTranscripts.map((transcript) => (
-                <Card key={transcript._id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center">
-                        <CardTitle className="text-lg truncate pr-2">{transcript.originalFilename}</CardTitle>
-                        <Trash2 
-                          className="h-4 w-4 text-red-500 cursor-pointer ml-2 hover:text-red-700" 
-                          onClick={(e) => handleDelete(transcript._id, e)}
-                        />
-                      </div>
-                      {getStatusIcon(transcript.status)}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        {getStatusBadge(transcript.status)}
-                        {transcript.duration && (
-                          <span className="text-sm text-muted-foreground">
-                            {Math.floor(transcript.duration / 60)}:{String(Math.floor(transcript.duration % 60)).padStart(2, '0')}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Created: {new Date(transcript.createdAt).toLocaleDateString()}
-                      </p>
-                      <Button 
-                        asChild 
-                        className="w-full" 
-                        variant={!transcript.status || transcript.status === 'completed' ? 'default' : 'secondary'}
-                        disabled={transcript.status && transcript.status !== 'completed'}
-                      >
-                        <Link href={`/clips/transcripts/${transcript._id}`}>
-                          {!transcript.status || transcript.status === 'completed' ? 'View Details' : 'Processing...'}
-                        </Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+        .header-nav {
+          position: relative;
+          z-index: 10;
+          padding: 1rem 2rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          backdrop-filter: blur(10px);
+          background: rgba(10, 10, 10, 0.8);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logo-container {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+
+
+        .brand-name {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #ffffff;
+        }
+
+        .nav-menu {
+          display: flex;
+          gap: 2rem;
+          align-items: center;
+        }
+
+        .nav-link {
+          color: #9ca3af;
+          text-decoration: none;
+          font-weight: 500;
+          transition: color 0.3s ease;
+        }
+
+        .nav-link:hover {
+          color: #14b8a6;
+        }
+
+        .cta-button {
+          background: linear-gradient(135deg, #14b8a6, #0d9488);
+          color: white;
+          padding: 0.75rem 1.5rem;
+          border-radius: 8px;
+          text-decoration: none;
+          font-weight: 600;
+          transition: all 0.3s ease;
+          border: none;
+          cursor: pointer;
+        }
+
+        .cta-button:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 10px 25px rgba(20, 184, 166, 0.3);
+        }
+
+        .main-content {
+          position: relative;
+          z-index: 5;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 4rem 2rem;
+          text-align: center;
+        }
+
+        .hero-badge {
+          display: inline-block;
+          background: rgba(20, 184, 166, 0.1);
+          color: #14b8a6;
+          padding: 0.5rem 1rem;
+          border-radius: 20px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          margin-bottom: 2rem;
+          border: 1px solid rgba(20, 184, 166, 0.2);
+        }
+
+        .hero-title {
+          font-size: clamp(3rem, 8vw, 6rem);
+          font-weight: 800;
+          line-height: 1.1;
+          margin-bottom: 1.5rem;
+          background: linear-gradient(135deg, #ffffff 0%, #14b8a6 50%, #ffffff 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .hero-subtitle {
+          font-size: 1.25rem;
+          color: #9ca3af;
+          max-width: 600px;
+          margin: 0 auto 3rem;
+          line-height: 1.6;
+        }
+
+        .button-group {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-bottom: 3rem;
+        }
+
+        .primary-button {
+          background: linear-gradient(135deg, #14b8a6, #0d9488);
+          color: white;
+          padding: 1rem 2rem;
+          border-radius: 12px;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 1.1rem;
+          transition: all 0.3s ease;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .primary-button:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 15px 35px rgba(20, 184, 166, 0.4);
+        }
+
+        .secondary-button {
+          background: rgba(255, 255, 255, 0.05);
+          color: white;
+          padding: 1rem 2rem;
+          border-radius: 12px;
+          text-decoration: none;
+          font-weight: 600;
+          font-size: 1.1rem;
+          transition: all 0.3s ease;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          backdrop-filter: blur(10px);
+        }
+
+        .secondary-button:hover {
+          background: rgba(255, 255, 255, 0.1);
+          transform: translateY(-3px);
+          box-shadow: 0 15px 35px rgba(255, 255, 255, 0.1);
+        }
+
+        .features {
+          display: flex;
+          justify-content: center;
+          gap: 3rem;
+          flex-wrap: wrap;
+          margin-top: 4rem;
+        }
+
+        .feature {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          color: #9ca3af;
+          font-weight: 500;
+        }
+
+        .feature-icon {
+          width: 20px;
+          height: 20px;
+          background: #14b8a6;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .feature-icon::before {
+          content: '✓';
+          color: white;
+          font-size: 12px;
+          font-weight: bold;
+        }
+
+        .github-icon {
+          width: 24px;
+          height: 24px;
+          fill: currentColor;
+        }
+
+        .arrow-icon {
+          width: 16px;
+          height: 16px;
+          fill: currentColor;
+          transition: transform 0.3s ease;
+        }
+
+        .primary-button:hover .arrow-icon {
+          transform: translateX(3px);
+        }
+
+        .fade-in {
+          animation: fadeInUp 1s ease-out;
+        }
+
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .hero-badge { animation-delay: 0.1s; }
+        .hero-title { animation-delay: 0.2s; }
+        .hero-subtitle { animation-delay: 0.3s; }
+        .button-group { animation-delay: 0.4s; }
+        .features { animation-delay: 0.5s; }
+
+        @media (max-width: 768px) {
+          .nav-menu {
+            gap: 1rem;
+          }
+
+          .main-content {
+            padding: 2rem 1rem;
+          }
+
+          .button-group {
+            flex-direction: column;
+            align-items: center;
+          }
+
+          .features {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: center;
+          }
+
+          .hero-title {
+            font-size: 2.5rem;
+          }
+        }
+      `}</style>
+
+      {/* Header */}
+      <header className="header-nav">
+        <div className="logo-container">
+          <img src="/logo.png" alt="Vinci Clips" width="120" height="40" />
         </div>
-      </div>
-    </main>
+        <nav className="nav-menu">
+          {/* <a href="#" className="nav-link">Solutions</a>
+          <a href="#" className="nav-link">Resources</a>
+          <a href="#" className="nav-link">Artemis</a> */}
+          <button className="cta-button">Try Other Vinci Apps</button>
+        </nav>
+      </header>
+
+      {/* Main content */}
+      <main className="main-content">
+        <div className="hero-badge fade-in">Open Source Video Tools</div>
+        
+        <h1 ref={titleRef} className="hero-title fade-in">
+          Vinci Clips<br/>
+          <span style={{color: '#14b8a6'}}>free & open-source Video to Reels Editor</span><br/>
+        </h1>
+        
+        <p className="hero-subtitle fade-in">
+          Vinci Clips is an open-source AI tool that turns long videos into engaging, reel-ready and shorts-ready content.
+          With full transparency, you have complete control over your clips and workflow.
+          Perfect for creators, brands, and educators looking to repurpose content into viral-ready highlights in minutes.
+        </p>
+
+        <div className="button-group fade-in">
+          <Link href="/upload" className="primary-button">
+            Try Early Beta
+            <svg className="arrow-icon" viewBox="0 0 24 24">
+              <path d="M5 12h14m-7-7l7 7-7 7" stroke="currentColor" strokeWidth="2" fill="none"/>
+            </svg>
+          </Link>
+          
+          <button className="secondary-button" onClick={handleGitHub}>
+            <svg className="github-icon" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            Contribute on GitHub
+          </button>
+        </div>
+
+        <div className="features fade-in">
+          <div className="feature">
+            <div className="feature-icon"></div>
+            <span>Open Source & Free</span>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"></div>
+            <span>Community Driven</span>
+          </div>
+          <div className="feature">
+            <div className="feature-icon"></div>
+            <span>Cross Platform</span>
+          </div>
+        </div>
+      </main>
+    </>
   );
-} 
+}
+
+function handleGitHub() {
+  window.open('https://github.com/tryvinci/vinci-clips', '_blank');
+}
