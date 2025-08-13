@@ -1,16 +1,5 @@
 steps:
-  # Build the frontend image
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'Build Frontend'
-    args:
-      - 'build'
-      - '-t'
-      - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
-      - '--build-arg'
-      - 'NEXT_PUBLIC_API_URL=${_NEXT_PUBLIC_API_URL}'
-      - './frontend'
-
-  # Build the backend image
+  # 1. Build the backend image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Build Backend'
     args:
@@ -19,24 +8,20 @@ steps:
       - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - './backend'
 
-  # Push the frontend image
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'Push Frontend'
-    args: ['push', 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
-
-  # Push the backend image
+  # 2. Push the backend image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Backend'
     args: ['push', 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest']
 
-  # Deploy Backend to Cloud Run
+  # 3. Deploy Backend to Cloud Run
+  # This step makes the backend URL available for the frontend build.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Backend'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - '${_BACKEND_SERVICE_NAME}' # Substitution variable for backend service name
+      - '${_BACKEND_SERVICE_NAME}'
       - '--image'
       - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - '--region'
@@ -45,16 +30,35 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--service-account'
-      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com' # Assumes this service account exists
+      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
+      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest'
 
-  # Deploy Frontend to Cloud Run
+  # 4. Build the frontend image, passing the live backend URL
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build Frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region asia-south1 --format 'value(status.url)')
+        docker build \
+          -t asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
+          --build-arg NEXT_PUBLIC_API_URL=$$BACKEND_URL \
+          ./frontend
+
+  # 5. Push the frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push Frontend'
+    args: ['push', 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
+
+  # 6. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Frontend'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - '${_FRONTEND_SERVICE_NAME}' # Substitution variable for frontend service name
+      - '${_FRONTEND_SERVICE_NAME}'
       - '--image'
       - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
       - '--region'
@@ -63,18 +67,16 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--service-account'
-      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com' # Assumes this service account exists
+      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
 
 images:
   - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
   - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
 
-# Default substitution values (can be overridden in the trigger)
 substitutions:
-  _FRONTEND_SERVICE_NAME: 'vinci-clips-frontend' # Replace with your actual frontend service name
-  _BACKEND_SERVICE_NAME: 'vinci-clips-backend'   # Replace with your actual backend service name
-  _NEXT_PUBLIC_API_URL: '' # The public URL of your backend service, e.g., https://vinci-clips-backend-xyz.a.run.app
+  _FRONTEND_SERVICE_NAME: 'vinci-clips-frontend'
+  _BACKEND_SERVICE_NAME: 'vinci-clips-backend'
 
 options:
   logging: CLOUD_LOGGING_ONLY
-timeout: '1200s'
+timeout: '1800s' # Increased timeout for sequential deployment
