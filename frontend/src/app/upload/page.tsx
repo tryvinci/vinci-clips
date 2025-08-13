@@ -34,7 +34,9 @@ export default function UploadClient() {
     const fetchRecentTranscripts = async () => {
       try {
         const response = await axios.get(`${API_URL}/clips/transcripts`);
-        setRecentTranscripts(response.data.slice(0, 6)); // Show only 6 most recent
+        if (Array.isArray(response.data)) {
+          setRecentTranscripts(response.data.slice(0, 6)); // Show only 6 most recent
+        }
       } catch (err) {
         console.error('Failed to fetch recent transcripts:', err);
       } finally {
