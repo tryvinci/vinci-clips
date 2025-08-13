@@ -9,7 +9,7 @@ import ReframeModal from '@/components/ReframeModal';
 import CaptionGenerator from '@/components/CaptionGenerator';
 import { Wand2 } from 'lucide-react';
 import StreamerGameplayCrop from '@/components/StreamerGameplayCrop';
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 interface TranscriptSegment {
     start: string;
     end: string;
@@ -57,7 +57,7 @@ export default function TranscriptDetailPage() {
         if (id) {
             const fetchTranscript = async () => {
                 try {
-                    const response = await axios.get(`http://localhost:8080/clips/transcripts/${id}`);
+                    const response = await axios.get(`${API_URL}/clips/transcripts/${id}`);
                     setTranscript(response.data);
                 } catch (err) {
                     setError('Failed to fetch transcript details.');
@@ -77,7 +77,7 @@ export default function TranscriptDetailPage() {
         setError('');
         
         try {
-            const response = await axios.post(`http://localhost:8080/clips/analyze/${transcript._id}`);
+            const response = await axios.post(`${API_URL}/clips/analyze/${transcript._id}`);
             setTranscript(response.data);
         } catch (err) {
             setError('Failed to generate clips. Please try again.');
@@ -109,7 +109,7 @@ export default function TranscriptDetailPage() {
         setError('');
         
         try {
-            const response = await axios.post(`http://localhost:8080/clips/clips/generate/${transcript._id}`, {
+            const response = await axios.post(`${API_URL}/clips/clips/generate/${transcript._id}`, {
                 clipIndex: clipIndex
             });
             
@@ -134,7 +134,7 @@ export default function TranscriptDetailPage() {
         try {
             // Update transcript to remove clips
             const updatedTranscript = { ...transcript, clips: [] };
-            await axios.put(`http://localhost:8080/clips/transcripts/${transcript._id}`, {
+            await axios.put(`${API_URL}/clips/transcripts/${transcript._id}`, {
                 clips: []
             });
             setTranscript(updatedTranscript);

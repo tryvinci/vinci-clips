@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-// REMOVED: Switch and Accordion imports
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 import { 
   Smartphone, 
   Square, 
@@ -80,7 +80,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   const getProxiedVideoUrl = (originalUrl: string) => {
     if (originalUrl.includes('storage.googleapis.com')) {
       const filename = originalUrl.split('/').pop()?.split('?')[0];
-      return `http://localhost:8080/clips/video-proxy/${filename}`;
+      return `${API_URL}/clips/video-proxy/${filename}`;
     }
     return originalUrl;
   };
@@ -121,7 +121,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
 
   const fetchCaptionStyles = async () => {
     try {
-      const response = await axios.get('http://localhost:8080/clips/captions/styles');
+      const response = await axios.get(`${API_URL}/clips/captions/styles`);
       setCaptionStyles(response.data.styles);
       if (response.data.styles.length > 0) {
         setSelectedCaptionStyle(response.data.styles[0].id);
@@ -135,7 +135,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
     const limitedDetections = detectionResults.sort((a, b) => b.confidence - a.confidence).slice(0, 20);
     try {
       setIsAnalyzing(true);
-      const response = await axios.post('http://localhost:8080/clips/reframe/analyze', {
+      const response = await axios.post(`${API_URL}/clips/reframe/analyze`, {
         transcriptId, targetPlatform: selectedPlatform, detections: limitedDetections, generatedClipUrl
       });
       if (response.data.success) {
@@ -151,7 +151,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
     try {
       setIsGenerating(true); setGenerationProgress(0); setError(null);
       const progressInterval = setInterval(() => setGenerationProgress(prev => Math.min(prev + Math.random() * 10, 90)), 500);
-      const response = await axios.post('http://localhost:8080/clips/reframe/generate', {
+      const response = await axios.post(`${API_URL}/clips/reframe/generate`, {
         transcriptId, targetPlatform: selectedPlatform, cropParameters, detections, outputName, generatedClipUrl,
         captions: addCaptions ? { enabled: true, style: selectedCaptionStyle } : { enabled: false }
       });

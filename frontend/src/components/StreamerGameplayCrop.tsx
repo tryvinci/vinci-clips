@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Crop, Wand2, Video, Download, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import axios from 'axios';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface StreamerGameplayCropProps {
   transcriptId: string;
@@ -277,7 +278,7 @@ export default function StreamerGameplayCrop({ transcriptId, videoUrl }: Streame
       }, 500);
       
       // Send request to backend
-      const response = await axios.post('http://localhost:8080/clips/reframe/streamer-gameplay', {
+      const response = await axios.post(`${API_URL}/clips/reframe/streamer-gameplay`, {
         transcriptId,
         webcamArea,
         gameplayArea,

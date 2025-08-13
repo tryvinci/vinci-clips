@@ -5,7 +5,7 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 interface Transcript {
     _id: string;
     originalFilename: string;
@@ -20,7 +20,7 @@ export default function TranscriptsPage() {
     useEffect(() => {
         const fetchTranscripts = async () => {
             try {
-                const response = await axios.get('http://localhost:8080/clips/transcripts');
+                const response = await axios.get(`${API_URL}/clips/transcripts`);
                 setTranscripts(response.data);
             } catch (err) {
                 setError('Failed to fetch transcripts. Please try again later.');

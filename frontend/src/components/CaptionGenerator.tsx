@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Download, Wand2, Video, Eye, Play } from 'lucide-react';
-
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 interface CaptionStyle {
     id: string;
     name: string;
@@ -34,7 +34,7 @@ export default function CaptionGenerator({ transcriptId, videoUrl }: CaptionGene
 
     const fetchCaptionStyles = async () => {
         try {
-            const response = await axios.get('http://localhost:8080/clips/captions/styles');
+            const response = await axios.get(`${API_URL}/clips/captions/styles`);
             setStyles(response.data.styles);
             if (response.data.styles.length > 0) {
                 setSelectedStyle(response.data.styles[0].id);
@@ -57,7 +57,7 @@ export default function CaptionGenerator({ transcriptId, videoUrl }: CaptionGene
 
         try {
             const response = await axios.post(
-                `http://localhost:8080/clips/captions/generate/${transcriptId}`,
+                `${API_URL}/clips/captions/generate/${transcriptId}`,
                 { style: selectedStyle }
             );
 

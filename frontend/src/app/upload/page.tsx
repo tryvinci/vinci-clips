@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 
 interface Transcript {
@@ -32,7 +33,7 @@ export default function UploadClient() {
   useEffect(() => {
     const fetchRecentTranscripts = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/clips/transcripts');
+        const response = await axios.get(`${API_URL}/clips/transcripts`);
         setRecentTranscripts(response.data.slice(0, 6)); // Show only 6 most recent
       } catch (err) {
         console.error('Failed to fetch recent transcripts:', err);
@@ -135,7 +136,7 @@ export default function UploadClient() {
     // Remove EventSource logic for upload progress for now to simplify
     try {
       setMessage('Uploading and processing...');
-      const response = await axios.post('http://localhost:8080/clips/upload/file', formData, {
+      const response = await axios.post(`${API_URL}/clips/upload/file`, formData, {
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -156,7 +157,7 @@ export default function UploadClient() {
       setMessage('Analysis complete!');
       console.log(response.data);
       // Refresh the recent transcripts list
-      const refreshResponse = await axios.get('http://localhost:8080/clips/transcripts');
+      const refreshResponse = await axios.get(`${API_URL}/clips/transcripts`);
       setRecentTranscripts(refreshResponse.data.slice(0, 6));
 
     } catch (error) {
@@ -179,7 +180,7 @@ export default function UploadClient() {
     setMessage('Extracting video information...');
 
     try {
-      const response = await axios.post('http://localhost:8080/clips/import/url', {
+      const response = await axios.post(`${API_URL}/clips/import/url`, {
         url: importUrl.trim()
       });
       
@@ -188,7 +189,7 @@ export default function UploadClient() {
       console.log(response.data);
       
       // Refresh the recent transcripts list
-      const refreshResponse = await axios.get('http://localhost:8080/clips/transcripts');
+      const refreshResponse = await axios.get(`${API_URL}/clips/transcripts`);
       setRecentTranscripts(refreshResponse.data.slice(0, 6));
 
     } catch (error: any) {
@@ -206,7 +207,7 @@ export default function UploadClient() {
     
     if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
       try {
-        await axios.delete(`http://localhost:8080/clips/transcripts/${id}`);
+        await axios.delete(`${API_URL}/clips/transcripts/${id}`);
         // Remove the deleted transcript from the state
         setRecentTranscripts(prev => prev.filter(t => t._id !== id));
         setMessage('Video deleted successfully');
