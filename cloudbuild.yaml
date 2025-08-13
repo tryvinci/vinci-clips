@@ -1,20 +1,14 @@
 steps:
-  # 1. Build the backend image
+  # 1. Build and Push Backend
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'Build Backend'
+    id: 'Build and Push Backend'
     args:
       - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
+      - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - './backend'
+    dir: '.'
 
-  # 2. Push the backend image
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'Push Backend'
-    args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest']
-    waitFor: ['Build Backend']
-
-  # 3. Deploy Backend to Cloud Run
+  # 2. Deploy Backend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Backend'
     entrypoint: gcloud
@@ -22,89 +16,41 @@ steps:
       - 'run'
       - 'deploy'
       - '${_BACKEND_SERVICE_NAME}'
-      - '--image'
-      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
+      - '--image=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--service-account'
-      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
+      - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
       - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest'
-    waitFor: ['Push Backend']
 
-  # 4. Get backend URL and build frontend
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'Get Backend URL'
+  # 3. Build Frontend Application (npm run build)
+  - name: 'gcr.io/cloud-builders/npm'
+    id: 'Build Frontend App'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        # Wait a moment for the service to be fully ready
-        sleep 10
-        
-        # Get the backend URL
-        BACKEND_URL=$(gcloud run services describe ${_BACKEND_SERVICE_NAME} \
-          --platform managed \
-          --region us-central1 \
-          --format 'value(status.url)')
-        
-        # Verify we got a URL
-        if [ -z "$BACKEND_URL" ]; then
-          echo "ERROR: Could not retrieve backend URL"
-          exit 1
-        fi
-        
-        # Add trailing slash if not present
-        if [[ "$BACKEND_URL" != */ ]]; then
-          BACKEND_URL="$BACKEND_URL/"
-        fi
-        
-        echo "DEBUG: Retrieved backend URL: $BACKEND_URL"
-        echo "DEBUG: Backend service name: ${_BACKEND_SERVICE_NAME}"
-        echo "DEBUG: Project ID: ${PROJECT_ID}"
-        
-        # Save the URL to a file for the next step
-        echo "$BACKEND_URL" > /workspace/backend_url.txt
-        echo "Backend URL saved: $BACKEND_URL"
-    waitFor: ['Deploy Backend']
+        npm install && \
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)') && \
+        echo "NEXT_PUBLIC_API_URL=$$BACKEND_URL" > .env.production && \
+        npm run build
+    dir: 'frontend'
 
-  # 5. Build the frontend image using the saved backend URL
+  # 4. Build Frontend Docker Image
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'Build Frontend'
-    entrypoint: 'bash'
+    id: 'Build Frontend Image'
     args:
-      - '-c'
-      - |
-        # Read the backend URL from the file
-        BACKEND_URL=$(cat /workspace/backend_url.txt)
-        
-        echo "DEBUG: Using backend URL: $BACKEND_URL"
-        
-        # Verify the URL format looks correct
-        if [[ "$BACKEND_URL" =~ ^https://.*\.run\.app/$ ]]; then
-          echo "DEBUG: URL format looks correct"
-        else
-          echo "WARNING: URL format might be incorrect: $BACKEND_URL"
-        fi
-        
-        # Build the frontend with the backend URL
-        echo "DEBUG: Building frontend with NEXT_PUBLIC_API_URL=$BACKEND_URL"
-        docker build \
-          -t us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
-          --build-arg NEXT_PUBLIC_API_URL=$BACKEND_URL \
-          ./frontend \
-          --progress=plain
-    waitFor: ['Get Backend URL']
+      - 'build'
+      - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
+      - '.'
+    dir: 'frontend'
 
-  # 6. Push the frontend image
+  # 5. Push Frontend Image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Frontend'
     args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
-    waitFor: ['Build Frontend']
 
-  # 7. Deploy Frontend to Cloud Run
+  # 6. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Frontend'
     entrypoint: gcloud
@@ -112,16 +58,11 @@ steps:
       - 'run'
       - 'deploy'
       - '${_FRONTEND_SERVICE_NAME}'
-      - '--image'
-      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
+      - '--image=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--service-account'
-      - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
-    waitFor: ['Push Frontend']
+      - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
 
 images:
   - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
@@ -133,5 +74,4 @@ substitutions:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
 timeout: '1800s'
