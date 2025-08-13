@@ -45,37 +45,46 @@ steps:
         sleep 10
         
         # Get the backend URL
-        BACKEND_URL=$(gcloud run services describe ${_BACKEND_SERVICE_NAME} \
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} \
           --platform managed \
           --region us-central1 \
           --format 'value(status.url)')
         
         # Verify we got a URL
-        if [ -z "$BACKEND_URL" ]; then
+        if [ -z "$$BACKEND_URL" ]; then
           echo "ERROR: Could not retrieve backend URL"
           exit 1
         fi
         
         # Add trailing slash if not present
-        if [[ "$BACKEND_URL" != */ ]]; then
-          BACKEND_URL="$BACKEND_URL/"
+        if [[ "$$BACKEND_URL" != */ ]]; then
+          BACKEND_URL="$$BACKEND_URL/"
         fi
         
-        echo "Using backend URL: $BACKEND_URL"
+        echo "DEBUG: Retrieved backend URL: $$BACKEND_URL"
+        echo "DEBUG: Backend service name: ${_BACKEND_SERVICE_NAME}"
+        echo "DEBUG: Project ID: ${PROJECT_ID}"
         
-        # Test the backend URL before building
-        echo "Testing backend connectivity..."
-        if curl -f "$BACKEND_URL" > /dev/null 2>&1; then
-          echo "Backend is reachable"
+        # Verify the URL format looks correct
+        if [[ "$$BACKEND_URL" =~ ^https://.*\.run\.app/$ ]]; then
+          echo "DEBUG: URL format looks correct"
         else
-          echo "Warning: Backend may not be fully ready, but proceeding with build"
+          echo "WARNING: URL format might be incorrect: $$BACKEND_URL"
         fi
         
         # Build the frontend with the backend URL
+        echo "DEBUG: Building frontend with NEXT_PUBLIC_API_URL=$$BACKEND_URL"
         docker build \
           -t us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
-          --build-arg NEXT_PUBLIC_API_URL=$BACKEND_URL \
-          ./frontend
+          --build-arg NEXT_PUBLIC_API_URL=$$BACKEND_URL \
+          ./frontend \
+          --progress=plain
+        
+        # Verify the environment variable was set in the built image
+        echo "DEBUG: Verifying environment variable in built image..."
+        docker run --rm \
+          us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
+          sh -c "echo 'Environment check:'; env | grep NEXT_PUBLIC_API_URL || echo 'NEXT_PUBLIC_API_URL not found in environment'"
     waitFor: ['Deploy Backend']
 
   # 5. Push the frontend image
