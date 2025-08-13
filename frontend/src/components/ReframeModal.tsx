@@ -5,12 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+// REMOVED: Switch and Accordion imports
 import { 
   Smartphone, 
   Square, 
@@ -22,11 +20,13 @@ import {
   Eye,
   AlertCircle,
   CheckCircle,
-  Type
+  Type,
+  Sparkles
 } from 'lucide-react';
 import SubjectDetection from './SubjectDetection';
 import axios from 'axios';
 
+// --- Interfaces (no changes) ---
 interface Platform {
   id: string;
   name: string;
@@ -36,31 +36,9 @@ interface Platform {
   icon: React.ReactNode;
   description: string;
 }
-
-interface CropParameters {
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  centerX: number;
-  centerY: number;
-}
-
-interface ReframedVideo {
-  filename: string;
-  url: string;
-  platform: string;
-  platformName: string;
-  aspectRatio: string;
-  cropParameters: CropParameters;
-}
-
-interface CaptionStyle {
-  id: string;
-  name: string;
-  description: string;
-}
-
+interface CropParameters { width: number; height: number; x: number; y: number; centerX: number; centerY: number; }
+interface ReframedVideo { filename: string; url: string; platform: string; platformName: string; aspectRatio: string; cropParameters: CropParameters; }
+interface CaptionStyle { id: string; name: string; description: string; }
 interface ReframeModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,55 +49,34 @@ interface ReframeModalProps {
   generatedClipUrl?: string;
 }
 
+// --- Constants & Helper Functions (with additions) ---
 const PLATFORMS: Platform[] = [
-  {
-    id: 'tiktok',
-    name: 'TikTok/Shorts',
-    aspectRatio: '9:16',
-    width: 9,
-    height: 16,
-    icon: <Smartphone className="w-5 h-5" />,
-    description: 'Vertical format for TikTok, YouTube Shorts, Instagram Reels'
-  },
-  {
-    id: 'instagram',
-    name: 'Instagram Square',
-    aspectRatio: '1:1',
-    width: 1,
-    height: 1,
-    icon: <Square className="w-5 h-5" />,
-    description: 'Square format for Instagram feed posts'
-  },
-  {
-    id: 'youtube',
-    name: 'YouTube Landscape',
-    aspectRatio: '16:9',
-    width: 16,
-    height: 9,
-    icon: <Monitor className="w-5 h-5" />,
-    description: 'Widescreen format for YouTube, Facebook, LinkedIn'
-  },
-  {
-    id: 'story',
-    name: 'Stories',
-    aspectRatio: '9:16',
-    width: 9,
-    height: 16,
-    icon: <Smartphone className="w-5 h-5" />,
-    description: 'Vertical format for Instagram/Facebook Stories'
-  }
+  { id: 'tiktok', name: 'TikTok/Shorts', aspectRatio: '9:16', width: 9, height: 16, icon: <Smartphone className="w-5 h-5" />, description: 'Vertical format for TikTok, YouTube Shorts, Instagram Reels' },
+  { id: 'instagram', name: 'Instagram Square', aspectRatio: '1:1', width: 1, height: 1, icon: <Square className="w-5 h-5" />, description: 'Square format for Instagram feed posts' },
+  { id: 'youtube', name: 'YouTube Landscape', aspectRatio: '16:9', width: 16, height: 9, icon: <Monitor className="w-5 h-5" />, description: 'Widescreen format for YouTube, Facebook, LinkedIn' },
 ];
 
+// NEW: Helper to generate CSS for caption style previews
+const getCaptionStyleCSS = (styleId: string): React.CSSProperties => {
+    const baseStyle: React.CSSProperties = {
+        position: 'absolute', bottom: '15%', left: '50%', transform: 'translateX(-50%)',
+        textAlign: 'center', fontSize: '1.2rem', fontWeight: 'bold', padding: '0.2em 0.5em',
+        borderRadius: '8px', width: '90%', lineHeight: '1.3',
+    };
+    switch (styleId) {
+        case 'bold-center': return { ...baseStyle, color: 'white', textShadow: '2px 2px 4px #000' };
+        case 'neon-pop': return { ...baseStyle, color: '#FF6B9D', textShadow: '0 0 8px #FFD93D, 2px 2px 4px #000', fontFamily: "'Comic Sans MS', cursive, sans-serif" };
+        case 'typewriter': return { ...baseStyle, color: 'white', backgroundColor: 'rgba(0,0,0,0.6)', fontFamily: "'Courier New', monospace" };
+        case 'bubble': return { ...baseStyle, color: 'black', backgroundColor: '#fff', border: '2px solid #000' };
+        case 'minimal-clean': return { ...baseStyle, color: 'white', backgroundColor: 'rgba(0,0,0,0.5)', fontWeight: 'normal' };
+        default: return baseStyle;
+    }
+};
+
 const ReframeModal: React.FC<ReframeModalProps> = ({
-  isOpen,
-  onClose,
-  transcriptId,
-  videoUrl,
-  originalFilename,
-  videoDimensions,
-  generatedClipUrl
+  isOpen, onClose, transcriptId, videoUrl, originalFilename, generatedClipUrl
 }) => {
-  // Convert GCS URL to proxied URL for CORS
+  // --- State Management (no major changes, `currentTab` removed) ---
   const getProxiedVideoUrl = (originalUrl: string) => {
     if (originalUrl.includes('storage.googleapis.com')) {
       const filename = originalUrl.split('/').pop()?.split('?')[0];
@@ -130,7 +87,6 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   
   const proxiedVideoUrl = getProxiedVideoUrl(videoUrl);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('tiktok');
-  const [currentTab, setCurrentTab] = useState<string>('detect');
   const [detections, setDetections] = useState<any[]>([]);
   const [cropParameters, setCropParameters] = useState<CropParameters | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -140,33 +96,27 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   const [reframedVideo, setReframedVideo] = useState<ReframedVideo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [outputName, setOutputName] = useState<string>('');
-  
-  // Caption-related state
   const [captionStyles, setCaptionStyles] = useState<CaptionStyle[]>([]);
   const [selectedCaptionStyle, setSelectedCaptionStyle] = useState<string>('');
   const [addCaptions, setAddCaptions] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
   const [endTime, setEndTime] = useState<number>(0);
-  const [videoDuration, setVideoDuration] = useState<number>(0);
+  // NEW: State to manage the visibility of advanced settings
+  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
 
-  // Initialize output name when modal opens
+  // --- Hooks and Handlers (no major changes to logic) ---
   useEffect(() => {
     if (isOpen && originalFilename) {
       const platform = PLATFORMS.find(p => p.id === selectedPlatform);
       const baseName = originalFilename.replace(/\.[^.]+$/, '');
-      setOutputName(`${baseName}_${platform?.name.replace(/\s+/g, '_').toLowerCase()}_reframed.mp4`);
-      
-      // Reset timing for generated clips (they are already the final duration)
+      setOutputName(`${baseName}_${platform?.id}_reframed.mp4`);
       setStartTime(0);
       setEndTime(0);
     }
   }, [isOpen, originalFilename, selectedPlatform]);
 
-  // Fetch caption styles when modal opens
   useEffect(() => {
-    if (isOpen) {
-      fetchCaptionStyles();
-    }
+    if (isOpen) fetchCaptionStyles();
   }, [isOpen]);
 
   const fetchCaptionStyles = async () => {
@@ -176,523 +126,197 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
       if (response.data.styles.length > 0) {
         setSelectedCaptionStyle(response.data.styles[0].id);
       }
-    } catch (error) {
-      console.error('Failed to fetch caption styles:', error);
-    }
+    } catch (error) { console.error('Failed to fetch caption styles:', error); }
   };
 
-  // Handle subject detection completion
   const handleDetectionComplete = async (detectionResults: any[]) => {
     setDetections(detectionResults);
     setError(null);
-    
-    // Limit to top 20 most confident detections to avoid backend overload
-    const limitedDetections = detectionResults
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 20);
-    
+    const limitedDetections = detectionResults.sort((a, b) => b.confidence - a.confidence).slice(0, 20);
     try {
       setIsAnalyzing(true);
-      
       const response = await axios.post('http://localhost:8080/clips/reframe/analyze', {
-        transcriptId,
-        targetPlatform: selectedPlatform,
-        detections: JSON.stringify(limitedDetections),
-        generatedClipUrl: generatedClipUrl // Use the generated clip URL instead of timing
+        transcriptId, targetPlatform: selectedPlatform, detections: limitedDetections, generatedClipUrl
       });
-      
       if (response.data.success) {
         setCropParameters(response.data.analysis.cropParameters);
         setPreviewUrl(response.data.analysis.previewUrl);
-        setCurrentTab('preview');
-      } else {
-        setError('Failed to analyze video for reframing');
-      }
-      
-    } catch (err: any) {
-      console.error('Analysis error:', err);
-      setError(err.response?.data?.error || 'Failed to analyze video');
-    } finally {
-      setIsAnalyzing(false);
-    }
+      } else { setError('Failed to analyze video for reframing'); }
+    } catch (err: any) { setError(err.response?.data?.error || 'Failed to analyze video');
+    } finally { setIsAnalyzing(false); }
   };
 
-  // Handle detection error
-  const handleDetectionError = (errorMessage: string) => {
-    setError(errorMessage);
-  };
-
-  // Generate reframed video
   const handleGenerate = async () => {
-    if (!cropParameters) {
-      setError('No crop parameters available. Please analyze the video first.');
-      return;
-    }
-    
+    if (!cropParameters) { setError('No crop parameters. Please analyze first.'); return; }
     try {
-      setIsGenerating(true);
-      setGenerationProgress(0);
-      setError(null);
-      
-      // Simulate progress (since we don't have real-time progress from backend)
-      const progressInterval = setInterval(() => {
-        setGenerationProgress(prev => {
-          if (prev >= 90) return prev;
-          return prev + Math.random() * 10;
-        });
-      }, 500);
-      
+      setIsGenerating(true); setGenerationProgress(0); setError(null);
+      const progressInterval = setInterval(() => setGenerationProgress(prev => Math.min(prev + Math.random() * 10, 90)), 500);
       const response = await axios.post('http://localhost:8080/clips/reframe/generate', {
-        transcriptId,
-        targetPlatform: selectedPlatform,
-        cropParameters,
-        outputName: outputName,
-        generatedClipUrl: generatedClipUrl, // Use generated clip instead of timing
-        captions: addCaptions ? {
-          enabled: true,
-          style: selectedCaptionStyle
-        } : { enabled: false }
+        transcriptId, targetPlatform: selectedPlatform, cropParameters, detections, outputName, generatedClipUrl,
+        captions: addCaptions ? { enabled: true, style: selectedCaptionStyle } : { enabled: false }
       });
-      
-      clearInterval(progressInterval);
-      setGenerationProgress(100);
-      
-      if (response.data.success) {
-        setReframedVideo(response.data.reframedVideo);
-        setCurrentTab('result');
-      } else {
-        setError('Failed to generate reframed video');
-      }
-      
-    } catch (err: any) {
-      console.error('Generation error:', err);
-      setError(err.response?.data?.error || 'Failed to generate reframed video');
-    } finally {
-      setIsGenerating(false);
-    }
+      clearInterval(progressInterval); setGenerationProgress(100);
+      if (response.data.success) { setReframedVideo(response.data.reframedVideo);
+      } else { setError('Failed to generate reframed video'); }
+    } catch (err: any) { setError(err.response?.data?.error || 'Failed to generate reframed video');
+    } finally { setIsGenerating(false); }
   };
 
-  // Manual crop adjustment
-  const handleCropAdjustment = async (newCrop: Partial<CropParameters>) => {
-    if (!cropParameters) return;
-    
-    const updatedCrop = { ...cropParameters, ...newCrop };
-    setCropParameters(updatedCrop);
-    
-    try {
-      const response = await axios.post('http://localhost:8080/clips/reframe/adjust', {
-        transcriptId,
-        targetPlatform: selectedPlatform,
-        cropParameters: updatedCrop
-      });
-      
-      if (response.data.success) {
-        setPreviewUrl(response.data.preview.url);
-      }
-    } catch (err) {
-      console.error('Crop adjustment error:', err);
-    }
-  };
-
-  // Reset modal state
   const resetModal = () => {
-    setCurrentTab('detect');
-    setDetections([]);
-    setCropParameters(null);
-    setPreviewUrl(null);
-    setReframedVideo(null);
-    setError(null);
-    setIsAnalyzing(false);
-    setIsGenerating(false);
-    setGenerationProgress(0);
+    setDetections([]); setCropParameters(null); setPreviewUrl(null); setReframedVideo(null);
+    setError(null); setIsAnalyzing(false); setIsGenerating(false); setGenerationProgress(0);
   };
 
-  // Handle modal close
-  const handleClose = () => {
-    resetModal();
-    onClose();
-  };
+  const handleClose = () => { resetModal(); onClose(); };
 
-  const selectedPlatformData = PLATFORMS.find(p => p.id === selectedPlatform);
-
+  // --- NEW: Redesigned JSX Structure ---
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Wand2 className="w-5 h-5" />
-            AI Video Reframing
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="p-6 pb-4">
+          <DialogTitle className="flex items-center gap-2 text-xl">
+            <Sparkles className="w-6 h-6 text-blue-500" />
+            AI Clip Generator
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Platform Selection */}
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Select Target Platform</Label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {PLATFORMS.map((platform) => (
-                <Card 
-                  key={platform.id}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    selectedPlatform === platform.id 
-                      ? 'ring-2 ring-blue-500 bg-blue-50' 
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedPlatform(platform.id)}
-                >
-                  <CardContent className="p-4 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      {platform.icon}
-                      <div className="font-medium text-sm">{platform.name}</div>
-                      <Badge variant="outline" className="text-xs">
-                        {platform.aspectRatio}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            {selectedPlatformData && (
-              <p className="text-sm text-gray-600">
-                {selectedPlatformData.description}
-              </p>
-            )}
-          </div>
-
-          {/* Main Content Tabs */}
-          <Tabs value={currentTab} onValueChange={setCurrentTab}>
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="detect" className="flex items-center gap-2">
-                <Eye className="w-4 h-4" />
-                Detect
-              </TabsTrigger>
-              <TabsTrigger value="preview" disabled={!cropParameters}>
-                Preview
-              </TabsTrigger>
-              <TabsTrigger value="captions" className="flex items-center gap-2">
-                <Type className="w-4 h-4" />
-                Captions
-              </TabsTrigger>
-              <TabsTrigger value="settings" disabled={!cropParameters}>
-                <Settings className="w-4 h-4" />
-                Settings
-              </TabsTrigger>
-              <TabsTrigger value="result" disabled={!reframedVideo}>
-                Result
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Subject Detection Tab */}
-            <TabsContent value="detect" className="space-y-4">
+        <div className="p-6 space-y-8">
+          {reframedVideo ? (
+            // --- RESULT VIEW ---
+            <div className="space-y-4 text-center">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Eye className="w-5 h-5" />
-                    AI Subject Detection
+                  <CardTitle className="flex items-center justify-center gap-2">
+                    <CheckCircle className="w-6 h-6 text-green-500" />
+                    Clip Generated Successfully!
                   </CardTitle>
-                  <CardDescription>
-                    Our AI will analyze your video to detect faces and poses for optimal framing.
-                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <video src={reframedVideo.url} controls className="w-full rounded-lg mx-auto max-w-sm" />
+                  <Button asChild size="lg" className="w-full max-w-sm">
+                    <a href={reframedVideo.url} download={reframedVideo.filename}>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download Video
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+              <Button variant="outline" onClick={handleClose}>Close</Button>
+            </div>
+          ) : (
+            // --- SETTINGS VIEW ---
+            <>
+              {/* Aspect Ratio Selection */}
+              <div className="space-y-3">
+                <Label className="text-base font-medium">1. Aspect Ratio</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {PLATFORMS.map((platform) => (
+                    <Card key={platform.id} onClick={() => setSelectedPlatform(platform.id)}
+                      className={`cursor-pointer transition-all text-center p-4 ${selectedPlatform === platform.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      <div className="flex flex-col items-center gap-2">
+                        {platform.icon}
+                        <div className="font-medium text-sm">{platform.name}</div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Subject Detection & Preview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2"><Eye className="w-5 h-5" />2. AI Smart Frame</CardTitle>
+                  <CardDescription>Our AI finds the best shot. Click the video to start.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <SubjectDetection
-                    videoUrl={proxiedVideoUrl}
-                    onDetectionComplete={handleDetectionComplete}
-                    onError={handleDetectionError}
-                  />
-                  
-                  {isAnalyzing && (
-                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span className="font-medium">Calculating optimal crop...</span>
+                  {previewUrl && cropParameters ? (
+                    <div className="grid md:grid-cols-2 gap-6 items-center">
+                      <img src={previewUrl} alt="Reframed preview" className="w-full rounded-lg border" />
+                      <div className="space-y-4">
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <h4 className="font-semibold text-green-800">Analysis Complete</h4>
+                          <p className="text-sm text-green-700 mt-1">Optimal crop found for {PLATFORMS.find(p=>p.id===selectedPlatform)?.name}.</p>
+                        </div>
+                        <Button variant="outline" onClick={() => setPreviewUrl(null)}>Re-analyze</Button>
                       </div>
-                      <Progress value={75} className="w-full" />
                     </div>
+                  ) : (
+                    <>
+                      <SubjectDetection videoUrl={proxiedVideoUrl} onDetectionComplete={handleDetectionComplete} onError={setError} />
+                      {isAnalyzing && <div className="mt-4 flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /><span>Calculating optimal crop...</span></div>}
+                    </>
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* Preview Tab */}
-            <TabsContent value="preview" className="space-y-4">
-              {previewUrl && cropParameters && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Reframing Preview</CardTitle>
-                    <CardDescription>
-                      Preview how your video will look after reframing to {selectedPlatformData?.aspectRatio}.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Reframed Preview</Label>
-                        <img 
-                          src={previewUrl} 
-                          alt="Reframed preview" 
-                          className="w-full rounded-lg border"
-                        />
-                      </div>
-                      <div className="space-y-4">
-                        <div>
-                          <Label className="text-sm font-medium">Crop Information</Label>
-                          <div className="text-sm text-gray-600 space-y-1 mt-1">
-                            <div>Size: {cropParameters.width} × {cropParameters.height}</div>
-                            <div>Position: ({cropParameters.x}, {cropParameters.y})</div>
-                            <div>Center: ({cropParameters.centerX}, {cropParameters.centerY})</div>
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-sm font-medium">Detections</Label>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {detections.length > 0 ? (
-                              <div className="space-y-1">
-                                <div>Faces: {detections.filter(d => d.type === 'face').length}</div>
-                                <div>Poses: {detections.filter(d => d.type === 'pose').length}</div>
-                              </div>
-                            ) : (
-                              'Using center crop (no subjects detected)'
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-
-            {/* Captions Tab */}
-            <TabsContent value="captions" className="space-y-4">
+              {/* Captions */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Type className="w-5 h-5" />
-                    TikTok/Reels Style Captions
-                  </CardTitle>
-                  <CardDescription>
-                    Add word-level synchronized captions to your reframed video for maximum engagement.
-                  </CardDescription>
+                  <CardTitle className="flex items-center gap-2"><Type className="w-5 h-5" />3. Captions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex items-center space-x-2">
+                  {/* REPLACED: Switch with a styled checkbox */}
+                  <div className="flex items-center space-x-3">
                     <input
                       type="checkbox"
                       id="addCaptions"
                       checked={addCaptions}
                       onChange={(e) => setAddCaptions(e.target.checked)}
-                      className="rounded"
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <Label htmlFor="addCaptions" className="text-sm font-medium">
-                      Add captions to reframed video
-                    </Label>
+                    <Label htmlFor="addCaptions" className="text-base cursor-pointer">Add Animated Captions</Label>
                   </div>
-
                   {addCaptions && (
                     <div className="space-y-4">
-                      <div>
-                        <Label className="text-sm font-medium">Caption Style</Label>
-                        <Select value={selectedCaptionStyle} onValueChange={setSelectedCaptionStyle}>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select caption style" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {captionStyles.map((style) => (
-                              <SelectItem key={style.id} value={style.id}>
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{style.name}</span>
-                                  <span className="text-xs text-muted-foreground">{style.description}</span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        {captionStyles.map((style) => (
-                          <div
-                            key={style.id}
-                            className={`p-3 border rounded cursor-pointer transition-colors ${
-                              selectedCaptionStyle === style.id
-                                ? 'border-primary bg-primary/10'
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                            onClick={() => setSelectedCaptionStyle(style.id)}
-                          >
-                            <div className="font-medium text-sm">{style.name}</div>
-                            <div className="text-xs text-muted-foreground mt-1">{style.description}</div>
+                      <p className="text-sm text-gray-600">Select a style for your burned-in captions.</p>
+                      <div className="flex gap-3 overflow-x-auto pb-3">
+                        {captionStyles.map(style => (
+                          <div key={style.id} onClick={() => setSelectedCaptionStyle(style.id)}
+                            className={`relative flex-shrink-0 w-32 h-48 bg-gray-800 rounded-lg cursor-pointer transition-all overflow-hidden ${selectedCaptionStyle === style.id ? 'ring-2 ring-blue-500' : ''}`}>
+                            <div style={getCaptionStyleCSS(style.id)}>Sample Text</div>
+                            <div className="absolute bottom-0 w-full p-2 bg-black/50">
+                              <p className="text-white text-xs font-medium truncate">{style.name}</p>
+                            </div>
                           </div>
                         ))}
                       </div>
-
-                      <div className="bg-blue-50 p-4 rounded-lg">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5" />
-                          <div className="text-sm">
-                            <p className="font-medium text-blue-900">Caption Features:</p>
-                            <ul className="text-blue-700 mt-1 space-y-1">
-                              <li>• Word-level synchronization for perfect timing</li>
-                              <li>• TikTok/Reels optimized styles and positioning</li>
-                              <li>• Automatic speaker detection and labeling</li>
-                              <li>• Burned-in captions that work on all platforms</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* Settings Tab */}
-            <TabsContent value="settings" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Generation Settings</CardTitle>
-                  <CardDescription>
-                    Configure output settings for your reframed video.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="outputName">Output Filename</Label>
-                    <Input
-                      id="outputName"
-                      value={outputName}
-                      onChange={(e) => setOutputName(e.target.value)}
-                      placeholder="Enter filename..."
-                      className="mt-1"
-                    />
-                  </div>
-                  
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="startTime">Start Time (seconds)</Label>
-                      <Input
-                        id="startTime"
-                        type="number"
-                        min="0"
-                        max={videoDuration || undefined}
-                        value={startTime}
-                        onChange={(e) => setStartTime(Number(e.target.value))}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="endTime">End Time (seconds)</Label>
-                      <Input
-                        id="endTime"
-                        type="number"
-                        min={startTime}
-                        max={videoDuration || undefined}
-                        value={endTime}
-                        onChange={(e) => setEndTime(Number(e.target.value))}
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="text-sm text-gray-600">
-                    Leave time fields empty to process the entire video.
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Result Tab */}
-            <TabsContent value="result" className="space-y-4">
-              {reframedVideo && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      Reframing Complete!
-                    </CardTitle>
-                    <CardDescription>
-                      Your video has been successfully reframed for {reframedVideo.platformName}.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div>
-                        <video 
-                          src={reframedVideo.url} 
-                          controls 
-                          className="w-full rounded-lg"
-                          style={{ aspectRatio: reframedVideo.aspectRatio.replace(':', '/') }}
-                        />
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <Label className="text-sm font-medium">Video Details</Label>
-                          <div className="text-sm text-gray-600 space-y-1 mt-1">
-                            <div>Platform: {reframedVideo.platformName}</div>
-                            <div>Aspect Ratio: {reframedVideo.aspectRatio}</div>
-                            <div>Filename: {reframedVideo.filename}</div>
-                          </div>
-                        </div>
-                        
-                        <Button asChild className="w-full">
-                          <a href={reframedVideo.url} download={reframedVideo.filename}>
-                            <Download className="w-4 h-4 mr-2" />
-                            Download Video
-                          </a>
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-          </Tabs>
-
-          {/* Error Display */}
-          {error && (
-            <div className="flex items-center gap-2 p-4 bg-red-50 text-red-700 rounded-lg">
-              <AlertCircle className="w-5 h-5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <Button variant="outline" onClick={handleClose}>
-              Close
-            </Button>
-            
-            <div className="flex items-center gap-3">
-              {currentTab === 'preview' && cropParameters && (
-                <Button onClick={() => setCurrentTab('settings')}>
-                  Configure Settings
+              {/* REPLACED: Accordion with a Button toggle */}
+              <div className="space-y-4">
+                <Button variant="outline" onClick={() => setIsAdvancedSettingsOpen(!isAdvancedSettingsOpen)} className="w-full justify-start">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Advanced Settings
                 </Button>
-              )}
-              
-              {(currentTab === 'settings' || (currentTab === 'preview' && cropParameters)) && (
-                <Button onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating... {Math.round(generationProgress)}%
-                    </>
-                  ) : (
-                    'Generate Reframed Video'
-                  )}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Generation Progress */}
-          {isGenerating && (
-            <div className="space-y-2">
-              <Progress value={generationProgress} className="w-full" />
-              <div className="text-sm text-center text-gray-600">
-                Processing video... This may take a few minutes for large files.
+                {isAdvancedSettingsOpen && (
+                  <div className="p-4 border rounded-lg space-y-4">
+                    <div>
+                      <Label htmlFor="outputName">Output Filename</Label>
+                      <Input id="outputName" value={outputName} onChange={(e) => setOutputName(e.target.value)} className="mt-1" />
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div><Label htmlFor="startTime">Start Time (sec)</Label><Input id="startTime" type="number" min="0" value={startTime} onChange={(e) => setStartTime(Number(e.target.value))} className="mt-1" /></div>
+                      <div><Label htmlFor="endTime">End Time (sec)</Label><Input id="endTime" type="number" min={startTime} value={endTime} onChange={(e) => setEndTime(Number(e.target.value))} className="mt-1" /></div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+
+              {/* Error Display */}
+              {error && <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg"><AlertCircle className="w-5 h-5" /><span>{error}</span></div>}
+
+              {/* Action Buttons */}
+              <div className="pt-6 border-t flex justify-between items-center">
+                <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+                <Button size="lg" onClick={handleGenerate} disabled={isGenerating || !cropParameters}>
+                  {isGenerating ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating... {Math.round(generationProgress)}%</> : 'Generate Clip'}
+                </Button>
+              </div>
+              {isGenerating && <Progress value={generationProgress} className="w-full" />}
+            </>
           )}
         </div>
       </DialogContent>

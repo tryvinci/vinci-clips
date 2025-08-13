@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import ReframeModal from '@/components/ReframeModal';
 import CaptionGenerator from '@/components/CaptionGenerator';
 import { Wand2 } from 'lucide-react';
+import StreamerGameplayCrop from '@/components/StreamerGameplayCrop';
 
 interface TranscriptSegment {
     start: string;
@@ -308,10 +309,10 @@ export default function TranscriptDetailPage() {
 
             {/* Caption Generator */}
             {transcript && (
-                <CaptionGenerator 
-                    transcriptId={transcript._id}
-                    videoUrl={transcript.videoUrl}
-                />
+                <div className="grid gap-6">
+                    <CaptionGenerator transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
+                    <StreamerGameplayCrop transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
+                </div>
             )}
 
             {/* Reframe Modal */}
