@@ -9,6 +9,11 @@
 *.env.*.local
 !*.env.example
 
+# Service account keys
+*service-account*.json
+*.json.key
+*config.json
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
