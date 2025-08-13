@@ -5,13 +5,13 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
+      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - './backend'
 
   # 2. Push the backend image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Backend'
-    args: ['push', 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest']
+    args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest']
 
   # 3. Deploy Backend to Cloud Run
   # This step makes the backend URL available for the frontend build.
@@ -23,9 +23,9 @@ steps:
       - 'deploy'
       - '${_BACKEND_SERVICE_NAME}'
       - '--image'
-      - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
+      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - '--region'
-      - 'asia-south1'
+      - 'us-central1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -40,16 +40,16 @@ steps:
     args:
       - '-c'
       - |
-        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region asia-south1 --format 'value(status.url)')
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
         docker build \
-          -t asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
+          -t us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
           --build-arg NEXT_PUBLIC_API_URL=$$BACKEND_URL \
           ./frontend
 
   # 5. Push the frontend image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Frontend'
-    args: ['push', 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
+    args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
 
   # 6. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -60,9 +60,9 @@ steps:
       - 'deploy'
       - '${_FRONTEND_SERVICE_NAME}'
       - '--image'
-      - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
+      - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
       - '--region'
-      - 'asia-south1'
+      - 'us-central1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -70,8 +70,8 @@ steps:
       - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
 
 images:
-  - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
-  - 'asia-south1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
+  - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
+  - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
 
 substitutions:
   _FRONTEND_SERVICE_NAME: 'vinci-clips-frontend'
