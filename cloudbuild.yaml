@@ -12,9 +12,9 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Backend'
     args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest']
+    waitFor: ['Build Backend']
 
   # 3. Deploy Backend to Cloud Run
-  # This step makes the backend URL available for the frontend build.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Backend'
     entrypoint: gcloud
@@ -32,6 +32,7 @@ steps:
       - '--service-account'
       - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
       - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest'
+    waitFor: ['Push Backend']
 
   # 4. Build the frontend image, passing the live backend URL
   - name: 'gcr.io/cloud-builders/docker'
@@ -40,16 +41,48 @@ steps:
     args:
       - '-c'
       - |
-        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
+        # Wait a moment for the service to be fully ready
+        sleep 10
+        
+        # Get the backend URL
+        BACKEND_URL=$(gcloud run services describe ${_BACKEND_SERVICE_NAME} \
+          --platform managed \
+          --region us-central1 \
+          --format 'value(status.url)')
+        
+        # Verify we got a URL
+        if [ -z "$BACKEND_URL" ]; then
+          echo "ERROR: Could not retrieve backend URL"
+          exit 1
+        fi
+        
+        # Add trailing slash if not present
+        if [[ "$BACKEND_URL" != */ ]]; then
+          BACKEND_URL="$BACKEND_URL/"
+        fi
+        
+        echo "Using backend URL: $BACKEND_URL"
+        
+        # Test the backend URL before building
+        echo "Testing backend connectivity..."
+        if curl -f "$BACKEND_URL" > /dev/null 2>&1; then
+          echo "Backend is reachable"
+        else
+          echo "Warning: Backend may not be fully ready, but proceeding with build"
+        fi
+        
+        # Build the frontend with the backend URL
         docker build \
           -t us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest \
-          --build-arg NEXT_PUBLIC_API_URL=$$BACKEND_URL \
+          --build-arg NEXT_PUBLIC_API_URL=$BACKEND_URL \
           ./frontend
+    waitFor: ['Deploy Backend']
 
   # 5. Push the frontend image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Frontend'
     args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
+    waitFor: ['Build Frontend']
 
   # 6. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -68,6 +101,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account'
       - 'vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
+    waitFor: ['Push Frontend']
 
 images:
   - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
@@ -79,4 +113,4 @@ substitutions:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-timeout: '1800s' # Increased timeout for sequential deployment
+  timeout: '1800s'
