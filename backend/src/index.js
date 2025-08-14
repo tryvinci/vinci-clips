@@ -16,7 +16,7 @@ const app = express();
 const port = process.env.PORT || 8080;
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.uc.r.appspot.com'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app'],
     credentials: true,
     exposedHeaders: ['Content-Length', 'X-Content-Length']
 }));
