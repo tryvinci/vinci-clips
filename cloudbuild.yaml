@@ -33,12 +33,14 @@ steps:
         echo "NEXT_PUBLIC_API_URL=$$BACKEND_URL" > frontend/.env.production
 
   # 4. Build Frontend Application (npm run build)
-  - name: 'gcr.io/cloud-builders/npm'
-    id: 'Build Frontend App'
+  - name: 'node:20'
+    id: 'Install Frontend Dependencies'
+    entrypoint: 'npm'
     args: ['install']
     dir: 'frontend'
-  - name: 'gcr.io/cloud-builders/npm'
+  - name: 'node:20'
     id: 'Run Next Build'
+    entrypoint: 'npm'
     args: ['run', 'build']
     dir: 'frontend'
 
