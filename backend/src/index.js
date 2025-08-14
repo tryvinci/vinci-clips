@@ -15,14 +15,8 @@ const mainRoutes = require('./routes/index');
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Configure CORS
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
-if (process.env.CORS_ORIGIN) {
-    allowedOrigins.push(process.env.CORS_ORIGIN);
-}
-
 app.use(cors({
-    origin: allowedOrigins,
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.uc.r.appspot.com'],
     credentials: true,
     exposedHeaders: ['Content-Length', 'X-Content-Length']
 }));
