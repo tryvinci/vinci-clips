@@ -20,7 +20,7 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest,CORS_ORIGIN=CORS_ORIGIN:latest'
+      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest'
 
   # 3. Get Backend URL and create .env file
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -75,7 +75,7 @@ steps:
       - '-c'
       - |
         FRONTEND_URL=$$(gcloud run services describe ${_FRONTEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
-        gcloud run services update ${_BACKEND_SERVICE_NAME} --region=us-central1 --update-secrets=CORS_ORIGIN=$$FRONTEND_URL:latest
+        gcloud run services update ${_BACKEND_SERVICE_NAME} --region=us-central1 --update-env-vars=CORS_ORIGIN=$$FRONTEND_URL
 
 images:
   - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
