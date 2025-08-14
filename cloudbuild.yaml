@@ -7,7 +7,7 @@ steps:
       - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - './backend'
 
-  # 2. Deploy Backend to Cloud Run
+  # 2. Deploy Backend to Cloud Run (Initial Deployment)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Backend'
     entrypoint: gcloud
@@ -20,7 +20,7 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest'
+      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,GCP_SERVICE_ACCOUNT_PATH=vinci-dev-serviceaccount:latest,CORS_ORIGIN=CORS_ORIGIN:latest'
 
   # 3. Get Backend URL and create .env file
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -32,7 +32,7 @@ steps:
         BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
         echo "NEXT_PUBLIC_API_URL=$$BACKEND_URL" > frontend/.env.production
 
-  # 4. Build Frontend Application (npm run build)
+  # 4. Build Frontend Application
   - name: 'node:20'
     id: 'Install Frontend Dependencies'
     entrypoint: 'npm'
@@ -44,21 +44,16 @@ steps:
     args: ['run', 'build']
     dir: 'frontend'
 
-  # 5. Build Frontend Docker Image
+  # 5. Build and Push Frontend Image
   - name: 'gcr.io/cloud-builders/docker'
-    id: 'Build Frontend Image'
+    id: 'Build and Push Frontend Image'
     args:
       - 'build'
       - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
       - '.'
     dir: 'frontend'
 
-  # 6. Push Frontend Image
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'Push Frontend'
-    args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
-
-  # 7. Deploy Frontend to Cloud Run
+  # 6. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Frontend'
     entrypoint: gcloud
@@ -71,6 +66,16 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
+
+  # 7. Update Backend with Frontend URL for CORS
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'Update Backend CORS'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        FRONTEND_URL=$$(gcloud run services describe ${_FRONTEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
+        gcloud run services update ${_BACKEND_SERVICE_NAME} --region=us-central1 --update-secrets=CORS_ORIGIN=$$FRONTEND_URL:latest
 
 images:
   - 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
