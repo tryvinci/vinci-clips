@@ -9,14 +9,9 @@ const Transcript = require('../models/Transcript');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require('@google/generative-ai/server');
 
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const serviceAccountPath = process.env.GCP_SERVICE_ACCOUNT_PATH || './src/vinci-service-account.json';
-    if (fs.existsSync(serviceAccountPath)) {
-        process.env.GOOGLE_APPLICATION_CREDENTIALS = serviceAccountPath;
-    } else {
-        console.error(`Service account key not found at ${serviceAccountPath}`);
-    }
-}
+// The application will now use Application Default Credentials (ADC) in all environments.
+// For local development, authenticate by running `gcloud auth application-default login`.
+// In Cloud Run, the attached service account's identity is used automatically.
 
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');

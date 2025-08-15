@@ -3,10 +3,9 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-// Set Google credentials dynamically
-if (process.env.GCP_SERVICE_ACCOUNT_PATH) {
-    process.env.GOOGLE_APPLICATION_CREDENTIALS = path.resolve(process.env.GCP_SERVICE_ACCOUNT_PATH);
-}
+// The application will now use Application Default Credentials (ADC) in all environments.
+// For local development, authenticate by running `gcloud auth application-default login`.
+// In Cloud Run, the attached service account's identity is used automatically.
 
 const logger = require('./utils/logger');
 const connectDB = require('./db');
