@@ -48,6 +48,13 @@ steps:
     entrypoint: 'npm'
     args: ['run', 'build']
     dir: 'frontend'
+    env:
+      - 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${_NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}'
+      - 'CLERK_SECRET_KEY=${_CLERK_SECRET_KEY}'
+      - 'NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login'
+      - 'NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup'
+      - 'NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/upload'
+      - 'NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/upload'
 
   # 5. Build Frontend Docker Image
   - name: 'gcr.io/cloud-builders/docker'
