@@ -13,7 +13,7 @@ const mainRoutes = require('./routes/index');
 
 const app = express();
 const port = process.env.PORT || 8080;
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app'];
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app','https://clips.tryvinci.com'];
 
 app.use((req, res, next) => {
 
@@ -40,7 +40,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app'],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app','https://clips.tryvinci.com'],
     credentials: true,
     exposedHeaders: ['Content-Length', 'X-Content-Length']
 }));

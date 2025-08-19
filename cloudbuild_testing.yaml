@@ -6,7 +6,7 @@ steps:
       - 'build'
       - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-backend:latest'
       - './backend'
-
+  
   # 2. Deploy Backend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Backend'
@@ -19,8 +19,8 @@ steps:
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest'
-
+      - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,CLERK_SECRET_KEY=CLERK_SECRET_KEY:latest'
+  
   # 3. Get Backend URL and create .env file
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Generate Frontend Env File'
@@ -28,34 +28,27 @@ steps:
     args:
       - '-c'
       - |
-        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
-        echo "NEXT_PUBLIC_API_URL=$$BACKEND_URL" > frontend/.env.production
+        BACKEND_URL=$(gcloud run services describe ${_BACKEND_SERVICE_NAME} --platform managed --region us-central1 --format 'value(status.url)')
+        echo "NEXT_PUBLIC_API_URL=$BACKEND_URL" > frontend/.env.production
         echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${_NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}" >> frontend/.env.production
-        echo "CLERK_SECRET_KEY=${_CLERK_SECRET_KEY}" >> frontend/.env.production
-        echo "NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login" >> frontend/.env.production
-        echo "NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup" >> frontend/.env.production
-        echo "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/upload" >> frontend/.env.production
-        echo "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/upload" >> frontend/.env.production
-
+        echo "NEXT_PUBLIC_CLERK_SIGN_IN_URL=${_NEXT_PUBLIC_CLERK_SIGN_IN_URL}" >> frontend/.env.production
+        echo "NEXT_PUBLIC_CLERK_SIGN_UP_URL=${_NEXT_PUBLIC_CLERK_SIGN_UP_URL}" >> frontend/.env.production
+        echo "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=${_NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL}" >> frontend/.env.production
+        echo "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=${_NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL}" >> frontend/.env.production
+  
   # 4. Build Frontend Application (npm run build)
   - name: 'node:20'
     id: 'Install Frontend Dependencies'
     entrypoint: 'npm'
     args: ['install']
     dir: 'frontend'
+  
   - name: 'node:20'
     id: 'Run Next Build'
     entrypoint: 'npm'
     args: ['run', 'build']
     dir: 'frontend'
-    env:
-      - 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${_NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}'
-      - 'CLERK_SECRET_KEY=${_CLERK_SECRET_KEY}'
-      - 'NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login'
-      - 'NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup'
-      - 'NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/upload'
-      - 'NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/upload'
-
+  
   # 5. Build Frontend Docker Image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Build Frontend Image'
@@ -64,12 +57,12 @@ steps:
       - '--tag=us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest'
       - '.'
     dir: 'frontend'
-
+  
   # 6. Push Frontend Image
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Frontend'
     args: ['push', 'us-central1-docker.pkg.dev/${PROJECT_ID}/vinci-clips/vinci-clips-frontend:latest']
-
+  
   # 7. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Deploy Frontend'
@@ -94,4 +87,4 @@ substitutions:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-timeout: '1800s'
+  timeout: '1800s'
