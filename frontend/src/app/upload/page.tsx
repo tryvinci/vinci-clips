@@ -332,14 +332,16 @@ export default function UploadClient() {
                     <Card key={transcript._id} className="hover:shadow-md transition-shadow">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
-                          <div className="flex items-center">
+                          <div className="flex items-center w-0 flex-1">
                             <CardTitle className="text-lg truncate pr-2">{transcript.originalFilename}</CardTitle>
                             <Trash2
-                              className="h-4 w-4 text-red-500 cursor-pointer ml-2 hover:text-red-700"
+                              className="h-4 w-4 text-red-500 cursor-pointer mr-2 hover:text-red-700 flex-shrink-0"
                               onClick={(e) => handleDelete(transcript._id, e)}
                             />
                           </div>
-                          {getStatusIcon(transcript.status)}
+                          <div className="flex-shrink-0">
+                            {getStatusIcon(transcript.status)}
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent>
