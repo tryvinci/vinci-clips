@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Trash2 } from 'lucide-react';
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 interface Transcript {
     _id: string;
@@ -33,6 +34,21 @@ export default function TranscriptsPage() {
         fetchTranscripts();
     }, []);
 
+    const handleDelete = async (id: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+            try {
+                await axios.delete(`${API_URL}/clips/transcripts/${id}`);
+                setTranscripts(prev => prev.filter(t => t._id !== id));
+            } catch (error) {
+                console.error('Error deleting video:', error);
+                setError('Failed to delete video');
+            }
+        }
+    };
+
     if (loading) {
         return <div className="flex justify-center items-center h-screen">Loading...</div>;
     }
@@ -48,7 +64,13 @@ export default function TranscriptsPage() {
                 {transcripts.map((transcript) => (
                     <Card key={transcript._id}>
                         <CardHeader>
-                            <CardTitle className="truncate">{transcript.originalFilename}</CardTitle>
+                            <div className="flex items-start justify-between">
+                                <CardTitle className="truncate pr-2 flex-1 w-0">{transcript.originalFilename}</CardTitle>
+                                <Trash2
+                                    className="h-4 w-4 text-red-500 cursor-pointer hover:text-red-700 flex-shrink-0"
+                                    onClick={(e) => handleDelete(transcript._id, e)}
+                                />
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <p className="text-sm text-muted-foreground">
@@ -63,4 +85,4 @@ export default function TranscriptsPage() {
             </div>
         </main>
     );
-} 
+}
