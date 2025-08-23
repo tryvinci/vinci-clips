@@ -2,6 +2,7 @@ import { ClerkProvider, UserButton } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import ConditionalLayout from "@/components/ui/ConditionalLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,10 +30,7 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <header className="absolute top-4 right-4">
-            <UserButton afterSignOutUrl="/" />
-          </header>
-          {children}
+          <ConditionalLayout>{children}</ConditionalLayout>
         </body>
       </html>
     </ClerkProvider>

@@ -50,7 +50,7 @@ app.use(express.json());
 app.use(logger.requestMiddleware);
 
 // Mount routes
-app.use('/clips', mainRoutes);
+app.use('/api', mainRoutes);
 
 async function startServer() {
     try {

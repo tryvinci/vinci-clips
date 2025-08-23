@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const TranscriptSchema = new mongoose.Schema({
+    userId: {
+        type: String,
+        required: true,
+        index: true,
+    },
     originalFilename: {
         type: String,
         required: true,

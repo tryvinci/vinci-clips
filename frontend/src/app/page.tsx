@@ -308,24 +308,6 @@ export default function LandingPage() {
         }
       `}</style>
 
-      {/* Header */}
-      <header className="header-nav">
-        <div className="logo-container">
-          <img src="/logo.png" alt="Vinci Clips" width="120" height="40" />
-        </div>
-        <nav className="nav-menu">
-          {/* <a href="#" className="nav-link">Solutions</a>
-          <a href="#" className="nav-link">Resources</a>
-          <a href="#" className="nav-link">Artemis</a> */}
-          <button
-            className="cta-button"
-            onClick={() => window.open("https://app.tryvinci.com", "_blank")}>
-            Try Other Vinci Apps
-          </button>
-
-        </nav>
-      </header>
-
       {/* Main content */}
       <main className="main-content">
         <div className="hero-badge fade-in">Open Source Video Tools</div>

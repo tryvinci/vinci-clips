@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
+import { useAuth } from '@clerk/nextjs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,7 +10,9 @@ import ReframeModal from '@/components/ReframeModal';
 import CaptionGenerator from '@/components/CaptionGenerator';
 import { Wand2 } from 'lucide-react';
 import StreamerGameplayCrop from '@/components/StreamerGameplayCrop';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 interface TranscriptSegment {
     start: string;
     end: string;
@@ -24,9 +27,9 @@ interface ClipSegment {
 
 interface Clip {
     title: string;
-    start?: number; // For single segment clips
-    end?: number;   // For single segment clips
-    segments?: ClipSegment[]; // For multi-segment clips
+    start?: number;
+    end?: number;
+    segments?: ClipSegment[];
     totalDuration?: number;
 }
 
@@ -45,45 +48,93 @@ export default function TranscriptDetailPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [analyzing, setAnalyzing] = useState(false);
-    const [generatingClips, setGeneratingClips] = useState<{[key: number]: boolean}>({});
-    const [generatedClips, setGeneratedClips] = useState<{[key: number]: any}>({});
+    const [generatingClips, setGeneratingClips] = useState<{ [key: number]: boolean }>({});
+    const [generatedClips, setGeneratedClips] = useState<{ [key: number]: any }>({});
     const [isReframeModalOpen, setIsReframeModalOpen] = useState(false);
     const [selectedClipForReframe, setSelectedClipForReframe] = useState<any>(null);
     const params = useParams();
     const router = useRouter();
-    const id = params.id;
+    const { getToken } = useAuth();
+    const id = params.id as string;
+
+    const fetchTranscript = useCallback(async () => {
+        if (!id) return;
+        setLoading(true);
+        try {
+            const token = await getToken();
+            const response = await axios.get(`${API_URL}/api/transcripts/${id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setTranscript(response.data);
+        } catch (err) {
+            setError('Failed to fetch transcript details.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }, [id, getToken]);
 
     useEffect(() => {
-        if (id) {
-            const fetchTranscript = async () => {
-                try {
-                    const response = await axios.get(`${API_URL}/clips/transcripts/${id}`);
-                    setTranscript(response.data);
-                } catch (err) {
-                    setError('Failed to fetch transcript details.');
-                    console.error(err);
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchTranscript();
-        }
-    }, [id]);
+        fetchTranscript();
+    }, [fetchTranscript]);
 
     const generateClips = async () => {
         if (!transcript) return;
-        
         setAnalyzing(true);
         setError('');
-        
         try {
-            const response = await axios.post(`${API_URL}/clips/analyze/${transcript._id}`);
+            const token = await getToken();
+            const response = await axios.post(`${API_URL}/api/analyze/${transcript._id}`, {}, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
             setTranscript(response.data);
         } catch (err) {
             setError('Failed to generate clips. Please try again.');
             console.error(err);
         } finally {
             setAnalyzing(false);
+        }
+    };
+
+    const generateVideoClip = async (clipIndex: number) => {
+        if (!transcript) return;
+        setGeneratingClips(prev => ({ ...prev, [clipIndex]: true }));
+        setError('');
+        try {
+            const token = await getToken();
+            const response = await axios.post(`${API_URL}/api/clips/generate/${transcript._id}`, {
+                clipIndex: clipIndex
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setGeneratedClips(prev => ({
+                ...prev,
+                [clipIndex]: response.data.clips[0]
+            }));
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.error || `Failed to generate clip ${clipIndex + 1}.`;
+            setError(errorMessage);
+            console.error('Clip generation error:', err);
+        } finally {
+            setGeneratingClips(prev => ({ ...prev, [clipIndex]: false }));
+        }
+    };
+
+    const clearAnalyzedClips = async () => {
+        if (!transcript) return;
+        try {
+            const token = await getToken();
+            const updatedTranscriptData = { ...transcript, clips: [] };
+            await axios.put(`${API_URL}/api/transcripts/${transcript._id}`, {
+                clips: []
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setTranscript(updatedTranscriptData);
+            setGeneratedClips({});
+        } catch (err) {
+            setError('Failed to clear clips. Please try again.');
+            console.error(err);
         }
     };
 
@@ -102,52 +153,8 @@ export default function TranscriptDetailPage() {
         }
     };
 
-    const generateVideoClip = async (clipIndex: number) => {
-        if (!transcript) return;
-        
-        setGeneratingClips(prev => ({...prev, [clipIndex]: true}));
-        setError('');
-        
-        try {
-            const response = await axios.post(`${API_URL}/clips/clips/generate/${transcript._id}`, {
-                clipIndex: clipIndex
-            });
-            
-            // Store the generated clip for this specific index
-            setGeneratedClips(prev => ({
-                ...prev, 
-                [clipIndex]: response.data.clips[0] // First clip in response
-            }));
-        } catch (err: any) {
-            const errorMessage = err.response?.data?.error || `Failed to generate clip ${clipIndex + 1}. Please try again.`;
-            const errorDetails = err.response?.data?.details ? ` (${err.response.data.details})` : '';
-            setError(errorMessage + errorDetails);
-            console.error('Clip generation error:', err);
-        } finally {
-            setGeneratingClips(prev => ({...prev, [clipIndex]: false}));
-        }
-    };
-
-    const clearAnalyzedClips = async () => {
-        if (!transcript) return;
-        
-        try {
-            // Update transcript to remove clips
-            const updatedTranscript = { ...transcript, clips: [] };
-            await axios.put(`${API_URL}/clips/transcripts/${transcript._id}`, {
-                clips: []
-            });
-            setTranscript(updatedTranscript);
-            setGeneratedClips({});
-        } catch (err) {
-            setError('Failed to clear clips. Please try again.');
-            console.error(err);
-        }
-    };
-
     const openReframeModal = (generatedClip: any, clipIndex: number) => {
-        // Pass the generated clip directly - it already contains the final video URL
-        setSelectedClipForReframe(generatedClip);
+        setSelectedClipForReframe({ ...generatedClip, filename: transcript?.originalFilename });
         setIsReframeModalOpen(true);
     };
 
@@ -224,7 +231,6 @@ export default function TranscriptDetailPage() {
                                             </div>
                                             <div className="text-sm text-muted-foreground">
                                                 {clip.segments && clip.segments.length > 0 ? (
-                                                    // Multi-segment clip
                                                     <div>
                                                         <div className="font-medium text-xs text-primary mb-1">MIXED SEGMENTS:</div>
                                                         {clip.segments.map((segment, segIndex) => (
@@ -237,7 +243,6 @@ export default function TranscriptDetailPage() {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    // Single segment clip
                                                     <div>
                                                         <div>{formatTime(clip.start || 0)} - {formatTime(clip.end || 0)}</div>
                                                         <div className="text-xs">
@@ -254,8 +259,6 @@ export default function TranscriptDetailPage() {
                                                     Preview in Player
                                                 </Button>
                                             </div>
-
-                                            {/* Generated clip video player */}
                                             {generatedClips[index] && (
                                                 <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                                                     <div className="flex items-center justify-between mb-2">
@@ -306,16 +309,12 @@ export default function TranscriptDetailPage() {
                     </div>
                 </CardContent>
             </Card>
-
-            {/* Caption Generator */}
             {transcript && (
                 <div className="grid gap-6">
                     <CaptionGenerator transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
                     <StreamerGameplayCrop transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
                 </div>
             )}
-
-            {/* Reframe Modal */}
             {transcript && selectedClipForReframe && (
                 <ReframeModal
                     isOpen={isReframeModalOpen}
@@ -328,4 +327,4 @@ export default function TranscriptDetailPage() {
             )}
         </main>
     );
-} 
+}

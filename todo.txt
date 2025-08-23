@@ -1,0 +1,172 @@
+### Additional Changes in Other Files for User-Specific File Visibility
+
+To fully implement user-specific visibility (where users only see their own uploads, transcripts, and clips), you'll need to update several other files in the backend (and potentially frontend). These changes ensure authentication is enforced across routes, the database schema supports `userId`, and all fetch/list operations filter by the authenticated user's ID. I'll outline the changes file-by-file, with rationale, exact code additions/modifications, and assumptions based on the repository structure from the README (e.g., `backend/src/models/Transcript.js`, `backend/src/routes/transcripts.js`, `backend/src/index.js`). If your file names or structure differ, adapt accordingly.
+
+Assume Clerk is already set up in the frontend (via `@clerk/nextjs`). For backend, ensure `@clerk/express` is installed globally (`cd backend && npm install @clerk/express`), and add Clerk keys to `backend/.env` (e.g., `CLERK_SECRET_KEY=your-secret-key`—get from Clerk dashboard).
+
+#### 1. **Update the Transcript Model (`backend/src/models/Transcript.js`)**
+   - **Rationale**: The MongoDB schema must include a `userId` field to associate records with users. This enables filtering in queries. Make it required and indexed for efficiency.
+   - **Changes**:
+     - Add the `userId` field to the schema.
+     - Add an index on `userId` for faster queries.
+     - **Modified Code** (add these lines inside the `new mongoose.Schema({ ... })` object):
+       ```javascript
+       userId: {
+         type: String,
+         required: true,
+         index: true // For efficient filtering
+       },
+       ```
+     - **Full Example Schema Snippet**:
+       ```javascript
+       const mongoose = require('mongoose');
+
+       const transcriptSchema = new mongoose.Schema({
+         originalFilename: { type: String, required: true },
+         transcript: { type: Array, default: [] },
+         status: { type: String, default: 'uploading' },
+         userId: { type: String, required: true, index: true }, // Added
+         // ... other existing fields like videoUrl, mp3Url, thumbnailUrl, duration, videoCloudPath
+       });
+
+       module.exports = mongoose.model('Transcript', transcriptSchema);
+       ```
+     - **Post-Change**: After updating, restart the backend. For existing data, you may need a migration script to add `userId` to old records (e.g., a one-time Node script: `Transcript.updateMany({}, { $set: { userId: 'default_user' } })`), but for new setups, it's fine.
+
+#### 2. **Add Global Clerk Middleware to the Server (`backend/src/index.js` or Main Server File)**
+   - **Rationale**: While we protected `/upload/file` in `upload.js`, it's best to apply authentication globally or to all protected routes for consistency. This also handles errors uniformly.
+   - **Changes**:
+     - Import Clerk middleware.
+     - Apply it to the Express app (or specific routers if preferred).
+     - Add an error handler for auth failures.
+     - **Added Code** (place before mounting routes like `app.use('/api/upload', uploadRouter);`):
+       ```javascript
+       const { ClerkExpressRequireAuth } = require('@clerk/express');
+
+       // Apply Clerk middleware globally (or to /api/*)
+       app.use('/api', ClerkExpressRequireAuth({
+         // Optional config if needed
+       }));
+
+       // Global error handler for Clerk auth errors
+       app.use((err, req, res, next) => {
+         if (err.code === 'authentication_required') {
+           return res.status(401).json({ error: 'Authentication required' });
+         }
+         next(err);
+       });
+       ```
+     - **Rationale Note**: This protects all `/api/*` endpoints. If you have public routes, apply selectively (e.g., `app.use('/api/upload', ClerkExpressRequireAuth(), uploadRouter);`).
+
+#### 3. **Update Transcript Fetch/List Routes (e.g., `backend/src/routes/transcripts.js` or Equivalent)**
+   - **Rationale**: Endpoints like `GET /api/transcripts` (list all) or `GET /api/transcripts/:id` (get one) must filter by `userId` to prevent users from seeing others' data. Assume this file exists; if transcripts are handled elsewhere, apply similarly.
+   - **Changes** (Create this file if it doesn't exist, and mount it in `index.js` with `app.use('/api/transcripts', transcriptRouter);`):
+     - Protect routes with Clerk (if not global).
+     - Filter queries with `{ userId: req.auth.userId }`.
+     - **Full Example Code for the File**:
+       ```javascript
+       const express = require('express');
+       const router = express.Router();
+       const Transcript = require('../models/Transcript');
+       const { ClerkExpressRequireAuth } = require('@clerk/express'); // If not global
+
+       // List all transcripts for the current user
+       router.get('/', ClerkExpressRequireAuth(), async (req, res) => {
+         try {
+           const userId = req.auth.userId;
+           if (!userId) {
+             return res.status(401).json({ error: 'Unauthorized' });
+           }
+           const transcripts = await Transcript.find({ userId }).sort({ createdAt: -1 }); // Sort by newest
+           res.json(transcripts);
+         } catch (error) {
+           res.status(500).json({ error: 'Failed to fetch transcripts' });
+         }
+       });
+
+       // Get a single transcript by ID (only if owned by user)
+       router.get('/:id', ClerkExpressRequireAuth(), async (req, res) => {
+         try {
+           const userId = req.auth.userId;
+           if (!userId) {
+             return res.status(401).json({ error: 'Unauthorized' });
+           }
+           const transcript = await Transcript.findOne({ _id: req.params.id, userId });
+           if (!transcript) {
+             return res.status(404).json({ error: 'Transcript not found or unauthorized' });
+           }
+           res.json(transcript);
+         } catch (error) {
+           res.status(500).json({ error: 'Failed to fetch transcript' });
+         }
+       });
+
+       module.exports = router;
+       ```
+     - **Rationale Note**: This ensures lists show only user-owned items. Add similar filtering to any delete/update routes.
+
+#### 4. **Update Clip Generation Routes (e.g., `backend/src/routes/clips.js` or Equivalent)**
+   - **Rationale**: If there's a `POST /api/clips/generate` endpoint (as mentioned in README), it should validate that the provided `transcriptId` belongs to the current user before generating clips.
+   - **Changes** (Assuming a basic clips route; create/adapt as needed):
+     - Filter Transcript lookup by `userId`.
+     - **Example Modified Code Snippet** (inside the route handler):
+       ```javascript
+       router.post('/generate', ClerkExpressRequireAuth(), async (req, res) => {
+         const userId = req.auth.userId;
+         if (!userId) {
+           return res.status(401).json({ error: 'Unauthorized' });
+         }
+         const { transcriptId, startTime, endTime } = req.body;
+         const transcript = await Transcript.findOne({ _id: transcriptId, userId }); // Filter by user
+         if (!transcript) {
+           return res.status(404).json({ error: 'Transcript not found or unauthorized' });
+         }
+         // ... proceed with clip generation (FFmpeg, etc.)
+       });
+       ```
+     - **Rationale Note**: This prevents generating clips from others' transcripts. Apply similar logic to any clip list/fetch routes.
+
+#### 5. **Frontend Adjustments (e.g., `frontend/src/components/Dashboard.js` or Upload/Transcript List Components)**
+   - **Rationale**: While backend enforces security, frontend should fetch in an authenticated context using Clerk. No major changes if already using Clerk, but ensure API calls are made only when signed in.
+   - **Changes**:
+     - Use Clerk's `useUser` hook to check authentication.
+     - **Example in a Transcript List Component**:
+       ```jsx
+       import { useUser } from '@clerk/nextjs';
+       import { useEffect, useState } from 'react';
+
+       function TranscriptList() {
+         const { isSignedIn, user } = useUser();
+         const [transcripts, setTranscripts] = useState([]);
+
+         useEffect(() => {
+           if (isSignedIn) {
+             fetch('/api/transcripts', {
+               headers: {
+                 // Clerk auto-handles JWT in cookies, but if needed: Authorization: `Bearer ${token}`
+               }
+             })
+               .then(res => res.json())
+               .then(setTranscripts)
+               .catch(console.error);
+           }
+         }, [isSignedIn]);
+
+         if (!isSignedIn) return <p>Please sign in to view your transcripts.</p>;
+
+         return (
+           <ul>
+             {transcripts.map(t => <li key={t._id}>{t.originalFilename}</li>)}
+           </ul>
+         );
+       }
+       ```
+     - **Rationale Note**: This hides content for unauthenticated users. For uploads, ensure the upload form is wrapped in `<SignedIn>` from Clerk.
+
+#### Testing and Final Notes
+- **Test End-to-End**: Sign up/login with two accounts, upload from each, and verify separation in dashboard/lists. Check GCP bucket for prefixed folders.
+- **Error Handling**: Watch for 401 errors if Clerk setup is incomplete—test auth with a simple protected route.
+- **Migrations/Security**: For production, use HTTPS, rate limiting, and consider GCP IAM policies for user folders.
+- **If Missing Files**: If routes like `transcripts.js` don't exist, infer from README (API endpoints) and create them.
+
+These changes complete the implementation. If you share code from specific files (e.g., models or other routes), I can refine further!

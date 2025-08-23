@@ -1,6 +1,7 @@
 const express = require('express');
 const { Storage } = require('@google-cloud/storage');
 const router = express.Router();
+const { authenticate } = require('../middleware/auth');
 
 const uploadRoutes = require('./upload');
 const analyzeRoutes = require('./analyze');
@@ -15,7 +16,7 @@ const reframeRoutes = require('./reframe');
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
-// Video proxy endpoint for CORS
+// Video proxy endpoint for CORS - This can remain public
 router.get('/video-proxy/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
@@ -58,15 +59,15 @@ router.get('/video-proxy/:filename', async (req, res) => {
     }
 });
 
-// Mount specific routes. Order matters for wildcard routes.
-router.use('/upload', uploadRoutes); // Specific route for uploads
-router.use('/import', importRoutes); // Specific route for URL imports
-router.use('/transcripts', transcriptsRoutes); // Specific route for all transcripts and individual transcript by ID
-router.use('/analyze', analyzeRoutes); // Specific route for analysis
-router.use('/clips', clipsRoutes); // Specific route for clips (if any sub-routes are defined in clips.js)
-router.use('/captions', captionsRoutes); // TikTok/Reels style caption generation
-router.use('/reframe', reframeRoutes); // AI-powered video reframing for social media
-router.use('/retry', retryRoutes); // Retry failed operations
-router.use('/admin', fixStatusRoutes); // Admin routes for fixing data issues
+// Mount specific routes with authentication. Order matters for wildcard routes.
+router.use('/upload', authenticate, uploadRoutes);
+router.use('/import', authenticate, importRoutes);
+router.use('/transcripts', authenticate, transcriptsRoutes);
+router.use('/analyze', authenticate, analyzeRoutes);
+router.use('/clips', authenticate, clipsRoutes);
+router.use('/captions', authenticate, captionsRoutes);
+router.use('/reframe', authenticate, reframeRoutes);
+router.use('/retry', authenticate, retryRoutes);
+router.use('/admin', authenticate, fixStatusRoutes);
 
 module.exports = router; 

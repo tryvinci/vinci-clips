@@ -13,22 +13,26 @@ const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
 router.get('/:transcriptId', async (req, res) => {
     const { transcriptId } = req.params;
+    const userId = req.auth.userId; // Get userId from authenticated session
 
     if (!transcriptId) {
         return res.status(400).send('Transcript ID is required.');
     }
 
-    try {
-        const db = await connectDB();
-        const clipsCollection = db.collection('clips');
-        
-        const clipsDoc = await clipsCollection.findOne({ transcriptId: new ObjectId(transcriptId) });
+    if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
 
-        if (!clipsDoc) {
-            return res.status(404).send('Clips not found for the given transcript ID.');
+    try {
+        // Find the transcript by its ID and the user's ID to ensure ownership
+        const transcript = await Transcript.findOne({ _id: transcriptId, userId: userId });
+
+        if (!transcript) {
+            return res.status(404).send('Transcript not found or you do not have permission to view it.');
         }
 
-        res.status(200).json(clipsDoc);
+        // Return the clips array from the transcript document
+        res.status(200).json(transcript.clips || []);
     } catch (error) {
         console.error('Error fetching clips:', error);
         res.status(500).send('Failed to fetch clips.');
@@ -46,7 +50,11 @@ router.post('/generate/:transcriptId', async (req, res) => {
             return res.status(400).json({ error: 'Invalid transcript ID format.' });
         }
 
-        const transcript = await Transcript.findById(transcriptId);
+        const userId = req.auth.userId;
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const transcript = await Transcript.findOne({ _id: transcriptId, userId });
         if (!transcript) {
             return res.status(404).json({ error: 'Transcript not found.' });
         }

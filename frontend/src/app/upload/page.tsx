@@ -1,7 +1,7 @@
 "use client";
 
-import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/nextjs";
-import React, { useState, useEffect } from 'react';
+import { SignedIn, SignedOut, RedirectToSignIn, useAuth } from "@clerk/nextjs";
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface Transcript {
   _id: string;
@@ -22,6 +22,7 @@ interface Transcript {
 }
 
 export default function UploadClient() {
+  const { getToken } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [progressText, setProgressText] = useState('');
@@ -31,66 +32,54 @@ export default function UploadClient() {
   const [importUrl, setImportUrl] = useState('');
   const [importMode, setImportMode] = useState<'file' | 'url'>('file');
 
-  useEffect(() => {
-    const fetchRecentTranscripts = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/clips/transcripts`);
-        if (Array.isArray(response.data)) {
-          setRecentTranscripts(response.data.slice(0, 6)); // Show only 6 most recent
-        }
-      } catch (err) {
-        console.error('Failed to fetch recent transcripts:', err);
-      } finally {
-        setLoadingTranscripts(false);
+  const fetchRecentTranscripts = useCallback(async () => {
+    setLoadingTranscripts(true);
+    try {
+      const token = await getToken();
+      const response = await axios.get(`${API_URL}/api/transcripts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (Array.isArray(response.data)) {
+        setRecentTranscripts(response.data.slice(0, 6));
       }
-    };
-
-    fetchRecentTranscripts();
-
-    // Set up polling for status updates only if there are processing videos
-    const checkForProcessingVideos = () => {
-      return recentTranscripts.some(transcript => 
-        transcript.status && !['completed', 'failed'].includes(transcript.status)
-      );
-    };
-
-    let interval: NodeJS.Timeout | null = null;
-    
-    if (checkForProcessingVideos()) {
-      interval = setInterval(fetchRecentTranscripts, 10000); // Poll every 10 seconds
+    } catch (err) {
+      console.error('Failed to fetch recent transcripts:', err);
+    } finally {
+      setLoadingTranscripts(false);
     }
+  }, [getToken]);
 
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [recentTranscripts]);
+  useEffect(() => {
+    fetchRecentTranscripts();
+  }, [fetchRecentTranscripts]);
+
+  useEffect(() => {
+    const hasProcessingVideos = recentTranscripts.some(
+      (transcript) => transcript.status && !['completed', 'failed'].includes(transcript.status)
+    );
+
+    if (hasProcessingVideos) {
+      const interval = setInterval(() => {
+        fetchRecentTranscripts();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [recentTranscripts, fetchRecentTranscripts]);
 
   const getStatusIcon = (status: string | undefined) => {
-    // If status is undefined, assume it's a completed older record
-    if (!status) {
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    }
-    
+    if (!status) return <CheckCircle className="h-4 w-4 text-green-500" />;
     switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'failed':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'completed': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed': return <AlertCircle className="h-4 w-4 text-red-500" />;
       case 'uploading':
       case 'converting':
-      case 'transcribing':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
+      case 'transcribing': return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+      default: return <Clock className="h-4 w-4 text-gray-500" />;
     }
   };
 
   const getStatusBadge = (status: string | undefined) => {
-    // If status is undefined, assume it's a completed older record
-    if (!status) {
-      return <Badge variant="default">Ready</Badge>;
-    }
-    
+    if (!status) return <Badge variant="default">Ready</Badge>;
     const statusConfig = {
       uploading: { label: 'Uploading', variant: 'secondary' as const },
       converting: { label: 'Converting', variant: 'secondary' as const },
@@ -98,76 +87,59 @@ export default function UploadClient() {
       completed: { label: 'Ready', variant: 'default' as const },
       failed: { label: 'Failed', variant: 'destructive' as const },
     };
-    
     const config = statusConfig[status as keyof typeof statusConfig] || { label: 'Unknown', variant: 'secondary' as const };
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    if (files && files.length > 0) {
-      await handleUpload(files[0]);
-    }
+    if (files && files.length > 0) await handleUpload(files[0]);
   };
 
   const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const files = event.dataTransfer.files;
-    if (files && files.length > 0) {
-      await handleUpload(files[0]);
-    }
+    if (files && files.length > 0) await handleUpload(files[0]);
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-  };
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => event.preventDefault();
   
   const handleUpload = async (file: File) => {
     if (file.size > 2 * 1024 * 1024 * 1024) {
-        setMessage('File is too large. Please upload a file smaller than 2GB.');
-        return;
+      setMessage('File is too large. Please upload a file smaller than 2GB.');
+      return;
     }
-
     setUploading(true);
     setUploadProgress(0);
     setProgressText('');
     setMessage('Connecting to server...');
-
     const formData = new FormData();
     formData.append('video', file);
-
-    // Remove EventSource logic for upload progress for now to simplify
     try {
       setMessage('Uploading and processing...');
-      const response = await axios.post(`${API_URL}/clips/upload/file`, formData, {
+      const token = await getToken();
+      const response = await axios.post(`${API_URL}/api/upload/file`, formData, {
+        headers: { Authorization: `Bearer ${token}` },
         onUploadProgress: (progressEvent) => {
           if (progressEvent.total) {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setUploadProgress(percentCompleted);
-            
             const loadedMB = (progressEvent.loaded / (1024 * 1024)).toFixed(2);
             const totalMB = (progressEvent.total / (1024 * 1024)).toFixed(2);
             setProgressText(`${loadedMB} MB / ${totalMB} MB`);
-
-            if (percentCompleted < 100) {
-              setMessage(`Uploading...`);
-            } else {
-              setMessage('Processing video... this may take a moment.');
-            }
+            if (percentCompleted < 100) setMessage(`Uploading...`);
+            else setMessage('Processing video... this may take a moment.');
           }
         },
       });
       setMessage('Analysis complete!');
       console.log(response.data);
-      // Refresh the recent transcripts list
-      const refreshResponse = await axios.get(`${API_URL}/clips/transcripts`);
-      setRecentTranscripts(refreshResponse.data.slice(0, 6));
-
+      await fetchRecentTranscripts();
     } catch (error) {
       console.error('Error uploading file:', error);
       setMessage('Upload failed. Please try again.');
     } finally {
-        setUploading(false);
+      setUploading(false);
     }
   };
 
@@ -176,25 +148,19 @@ export default function UploadClient() {
       setMessage('Please enter a valid URL.');
       return;
     }
-
     setUploading(true);
     setUploadProgress(0);
     setProgressText('');
     setMessage('Extracting video information...');
-
     try {
-      const response = await axios.post(`${API_URL}/clips/import/url`, {
-        url: importUrl.trim()
+      const token = await getToken();
+      const response = await axios.post(`${API_URL}/api/import/url`, { url: importUrl.trim() }, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      
       setMessage('Video imported successfully!');
       setImportUrl('');
       console.log(response.data);
-      
-      // Refresh the recent transcripts list
-      const refreshResponse = await axios.get(`${API_URL}/clips/transcripts`);
-      setRecentTranscripts(refreshResponse.data.slice(0, 6));
-
+      await fetchRecentTranscripts();
     } catch (error: any) {
       console.error('Error importing URL:', error);
       const errorMessage = error.response?.data?.error || 'Failed to import video from URL.';
@@ -205,13 +171,14 @@ export default function UploadClient() {
   };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.preventDefault(); // Prevent navigation
-    e.stopPropagation(); // Prevent event bubbling
-    
+    e.preventDefault();
+    e.stopPropagation();
     if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
       try {
-        await axios.delete(`${API_URL}/clips/transcripts/${id}`);
-        // Remove the deleted transcript from the state
+        const token = await getToken();
+        await axios.delete(`${API_URL}/api/transcripts/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         setRecentTranscripts(prev => prev.filter(t => t._id !== id));
         setMessage('Video deleted successfully');
       } catch (error) {

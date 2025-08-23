@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,11 +77,12 @@ const getCaptionStyleCSS = (styleId: string): React.CSSProperties => {
 const ReframeModal: React.FC<ReframeModalProps> = ({
   isOpen, onClose, transcriptId, videoUrl, originalFilename, generatedClipUrl
 }) => {
+  const { getToken } = useAuth(); // Instantiate useAuth
   // --- State Management (no major changes, `currentTab` removed) ---
   const getProxiedVideoUrl = (originalUrl: string) => {
     if (originalUrl.includes('storage.googleapis.com')) {
       const filename = originalUrl.split('/').pop()?.split('?')[0];
-      return `${API_URL}/clips/video-proxy/${filename}`;
+      return `${API_URL}/api/video-proxy/${filename}`;
     }
     return originalUrl;
   };
@@ -108,7 +110,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   useEffect(() => {
     if (isOpen && originalFilename) {
       const platform = PLATFORMS.find(p => p.id === selectedPlatform);
-      const baseName = originalFilename.replace(/\.[^.]+$/, '');
+      const baseName = originalFilename.replace(/.[^.]+$/, '');
       setOutputName(`${baseName}_${platform?.id}_reframed.mp4`);
       setStartTime(0);
       setEndTime(0);
@@ -121,7 +123,10 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
 
   const fetchCaptionStyles = async () => {
     try {
-      const response = await axios.get(`${API_URL}/clips/captions/styles`);
+      const token = await getToken();
+      const response = await axios.get(`${API_URL}/api/captions/styles`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setCaptionStyles(response.data.styles);
       if (response.data.styles.length > 0) {
         setSelectedCaptionStyle(response.data.styles[0].id);
@@ -135,8 +140,11 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
     const limitedDetections = detectionResults.sort((a, b) => b.confidence - a.confidence).slice(0, 20);
     try {
       setIsAnalyzing(true);
-      const response = await axios.post(`${API_URL}/clips/reframe/analyze`, {
+      const token = await getToken();
+      const response = await axios.post(`${API_URL}/api/reframe/analyze`, {
         transcriptId, targetPlatform: selectedPlatform, detections: limitedDetections, generatedClipUrl
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
         setCropParameters(response.data.analysis.cropParameters);
@@ -151,9 +159,12 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
     try {
       setIsGenerating(true); setGenerationProgress(0); setError(null);
       const progressInterval = setInterval(() => setGenerationProgress(prev => Math.min(prev + Math.random() * 10, 90)), 500);
-      const response = await axios.post(`${API_URL}/clips/reframe/generate`, {
+      const token = await getToken();
+      const response = await axios.post(`${API_URL}/api/reframe/generate`, {
         transcriptId, targetPlatform: selectedPlatform, cropParameters, detections, outputName, generatedClipUrl,
         captions: addCaptions ? { enabled: true, style: selectedCaptionStyle } : { enabled: false }
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       clearInterval(progressInterval); setGenerationProgress(100);
       if (response.data.success) { setReframedVideo(response.data.reframedVideo);

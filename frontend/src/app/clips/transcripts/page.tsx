@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
+import { useAuth } from '@clerk/nextjs';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Trash2 } from 'lucide-react';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 interface Transcript {
     _id: string;
     originalFilename: string;
@@ -17,22 +20,27 @@ export default function TranscriptsPage() {
     const [transcripts, setTranscripts] = useState<Transcript[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const { getToken } = useAuth();
+
+    const fetchTranscripts = useCallback(async () => {
+        setLoading(true);
+        try {
+            const token = await getToken();
+            const response = await axios.get(`${API_URL}/api/transcripts`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            setTranscripts(response.data);
+        } catch (err) {
+            setError('Failed to fetch transcripts. Please try again later.');
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }, [getToken]);
 
     useEffect(() => {
-        const fetchTranscripts = async () => {
-            try {
-                const response = await axios.get(`${API_URL}/clips/transcripts`);
-                setTranscripts(response.data);
-            } catch (err) {
-                setError('Failed to fetch transcripts. Please try again later.');
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchTranscripts();
-    }, []);
+    }, [fetchTranscripts]);
 
     const handleDelete = async (id: string, e: React.MouseEvent) => {
         e.preventDefault();
@@ -40,7 +48,10 @@ export default function TranscriptsPage() {
         
         if (confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
             try {
-                await axios.delete(`${API_URL}/clips/transcripts/${id}`);
+                const token = await getToken();
+                await axios.delete(`${API_URL}/api/transcripts/${id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
                 setTranscripts(prev => prev.filter(t => t._id !== id));
             } catch (error) {
                 console.error('Error deleting video:', error);
@@ -59,7 +70,7 @@ export default function TranscriptsPage() {
 
     return (
         <main className="container mx-auto p-8">
-            <h1 className="text-4xl font-bold mb-8">All Transcripts</h1>
+            <h1 className="text-4xl font-bold mb-8">All Videos</h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {transcripts.map((transcript) => (
                     <Card key={transcript._id}>
@@ -76,7 +87,7 @@ export default function TranscriptsPage() {
                             <p className="text-sm text-muted-foreground">
                                 Created: {new Date(transcript.createdAt).toLocaleDateString()}
                             </p>
-                            <Button asChild className="mt-4">
+                            <Button asChild className="mt-4 w-full">
                                 <Link href={`/clips/transcripts/${transcript._id}`}>View Details</Link>
                             </Button>
                         </CardContent>
