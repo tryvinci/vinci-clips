@@ -25,7 +25,7 @@ steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'Generate Frontend Env File'
     entrypoint: 'bash'
-    secretEnv: ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY']
+    secretEnv: ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY']
     args:
       - '-c'
       - |
