@@ -19,6 +19,7 @@ steps:
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--service-account=vinci-dev@${PROJECT_ID}.iam.gserviceaccount.com'
       - '--update-secrets=DB_URL=DB_URL:latest,DB_NAME=DB_NAME:latest,GCP_BUCKET_NAME=GCP_BUCKET_NAME:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GROQ_API_KEY=GROQ_API_KEY:latest,LLM_MODEL=LLM_MODEL:latest,CLERK_SECRET_KEY=CLERK_SECRET_KEY:latest,NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:latest'
 
   # 3. Get Backend URL and create .env file
