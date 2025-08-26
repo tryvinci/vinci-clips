@@ -37,10 +37,18 @@ const validateUrl = (url) => {
 
 // YouTube video extraction
 const extractYouTubeVideo = async (url) => {
+    const requestOptions = {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'Accept-Language': 'en-US,en;q=0.9',
+        },
+    };
+
     if (!ytdl.validateURL(url)) {
         throw new Error('Invalid YouTube URL');
     }
-    const info = await ytdl.getInfo(url);
+    const info = await ytdl.getInfo(url, { requestOptions });
     const videoDetails = info.videoDetails;
     return {
         title: videoDetails.title,
@@ -51,8 +59,20 @@ const extractYouTubeVideo = async (url) => {
 
 // YouTube-specific download using ytdl stream
 const downloadYouTubeVideo = (url, outputPath) => {
+    const requestOptions = {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+            'Accept-Language': 'en-US,en;q=0.9',
+        },
+    };
+
     return new Promise((resolve, reject) => {
-        const stream = ytdl(url, { quality: 'highest', filter: format => format.hasAudio && format.hasVideo });
+        const stream = ytdl(url, {
+            quality: 'highest',
+            filter: format => format.hasAudio && format.hasVideo,
+            requestOptions,
+        });
         const writer = fs.createWriteStream(outputPath);
         stream.pipe(writer);
         stream.on('error', (error) => reject(new Error(`YouTube download failed: ${error.message}`)));
