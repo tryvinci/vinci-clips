@@ -5,8 +5,80 @@ const path = require('path');
 const mongoose = require('mongoose');
 const Transcript = require('../models/Transcript');
 const { processVideo } = require('../utils/videoProcessor');
+const { SecretManagerServiceClient } = require('@google-cloud/secret-manager'); // Import the client
+const { Storage } = require('@google-cloud/storage'); // Import GCS
 
 const router = express.Router();
+
+// --- GCS Setup ---
+const storage = new Storage();
+const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
+// --- END GCS Setup ---
+
+// --- START: NEW CODE FOR COOKIE HANDLING ---
+
+let youtubeCookieString = ''; // This will hold our formatted cookie string
+
+/**
+ * Parses the content of a cookies.txt file into an HTTP Cookie header string.
+ * @param {string} cookiesTxtContent The raw text content from cookies.txt.
+ * @returns {string} A formatted string like "key1=value1; key2=value2;".
+ */
+const parseCookiesTxt = (cookiesTxtContent) => {
+    return cookiesTxtContent
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#')) // Ignore empty lines and comments
+        .map(line => {
+            const parts = line.split('\t');
+            if (parts.length >= 7) {
+                const name = parts[5];
+                const value = parts[6];
+                return `${name}=${value}`;
+            }
+            return null;
+        })
+        .filter(Boolean)
+        .join('; ');
+};
+
+/**
+ * Fetches the cookie data from Secret Manager and populates our cookie variable.
+ * This should run once when the server starts.
+ */
+async function initializeCookies() {
+    try {
+        // IMPORTANT: Replace with your project ID and secret name
+        const secretName = 'projects/382403086889/secrets/youtube-cookies/versions/latest';
+        
+        const client = new SecretManagerServiceClient();
+        const [version] = await client.accessSecretVersion({ name: secretName });
+        
+        const cookiesTxtContent = version.payload.data.toString('utf8');
+        youtubeCookieString = parseCookiesTxt(cookiesTxtContent);
+        
+        console.log('[Auth] Successfully initialized YouTube cookies.');
+    } catch (error) {
+        console.error('[Auth] FATAL: Could not initialize YouTube cookies from Secret Manager.', error);
+        // In a real app, you might want to prevent the server from starting if cookies are essential
+        // process.exit(1); 
+    }
+}
+
+
+
+// Reusable function to get request options
+const getRequestOptions = () => {
+    if (!youtubeCookieString) {
+        throw new Error('YouTube cookie string is not initialized.');
+    }
+    return {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.164 Safari/537.36',
+            'cookie': youtubeCookieString, // Use the parsed cookie string
+        },
+    };
+};
 
 // Ensure the imports directory exists
 const importsDir = 'uploads/imports';
@@ -35,20 +107,12 @@ const validateUrl = (url) => {
     }
 };
 
-// YouTube video extraction
+// YouTube video extraction - MODIFIED
 const extractYouTubeVideo = async (url) => {
-    const requestOptions = {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'Accept-Language': 'en-US,en;q=0.9',
-        },
-    };
-
     if (!ytdl.validateURL(url)) {
         throw new Error('Invalid YouTube URL');
     }
-    const info = await ytdl.getInfo(url, { requestOptions });
+    const info = await ytdl.getInfo(url, { requestOptions: getRequestOptions() });
     const videoDetails = info.videoDetails;
     return {
         title: videoDetails.title,
@@ -57,32 +121,39 @@ const extractYouTubeVideo = async (url) => {
     };
 };
 
-// YouTube-specific download using ytdl stream
-const downloadYouTubeVideo = (url, outputPath) => {
-    const requestOptions = {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.101 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'Accept-Language': 'en-US,en;q=0.9',
-        },
-    };
-
+// MODIFIED: Streams YouTube download directly to Google Cloud Storage
+const downloadYouTubeVideoToGCS = (url, gcsPath) => {
     return new Promise((resolve, reject) => {
-        const stream = ytdl(url, {
+        console.log(`[Import] Starting GCS stream for ${gcsPath}`);
+        const videoStream = ytdl(url, {
             quality: 'highest',
             filter: format => format.hasAudio && format.hasVideo,
-            requestOptions,
+            requestOptions: getRequestOptions(),
         });
-        const writer = fs.createWriteStream(outputPath);
-        stream.pipe(writer);
-        stream.on('error', (error) => reject(new Error(`YouTube download failed: ${error.message}`)));
-        writer.on('error', (error) => reject(new Error(`File write failed: ${error.message}`)));
-        writer.on('finish', () => {
-            console.log(`[Import] YouTube download completed: ${outputPath}`);
-            resolve();
+
+        const gcsFile = bucket.file(gcsPath);
+        const gcsWriteStream = gcsFile.createWriteStream({
+            resumable: false, // Good for smaller files / single streams
+            contentType: 'video/mp4',
+        });
+
+        videoStream.pipe(gcsWriteStream)
+            .on('finish', () => {
+                console.log(`[Import] GCS stream finished for ${gcsPath}`);
+                resolve();
+            })
+            .on('error', (error) => {
+                console.error(`[Import] GCS write stream failed for ${gcsPath}:`, error);
+                reject(new Error(`GCS write stream failed: ${error.message}`));
+            });
+
+        videoStream.on('error', (error) => {
+            console.error(`[Import] YouTube download stream failed for ${gcsPath}:`, error);
+            reject(new Error(`YouTube download failed: ${error.message}`));
         });
     });
 };
+
 
 // Main URL import endpoint
 router.post('/url', async (req, res) => {
@@ -105,34 +176,36 @@ router.post('/url', async (req, res) => {
     try {
         const videoInfo = await extractYouTubeVideo(url);
         
-        // Use the transcript's unique ID for all file operations to guarantee a safe filename
         const safeFilenameBase = new mongoose.Types.ObjectId().toString();
-        const videoPath = path.join(importsDir, `${safeFilenameBase}.mp4`);
-        const finalFilename = `${videoInfo.title.replace(/[^\w\s.-]/g, '_')}.mp4`; // For display
+        const finalFilename = `${videoInfo.title.replace(/[^\w\s.-]/g, '_')}.mp4`;
+        
+        // Define the path for the file in Google Cloud Storage
+        const gcsVideoPath = `users/${userId}/videos/${finalFilename}`;
 
         transcript = new Transcript({
-            _id: safeFilenameBase, // Use the same ID for the document
+            _id: safeFilenameBase,
             userId: userId,
-            originalFilename: finalFilename, // Store the user-friendly title
+            originalFilename: finalFilename,
             status: 'uploading',
             importUrl: url,
             platform: platform,
-            externalVideoId: videoInfo.videoId
+            externalVideoId: videoInfo.videoId,
+            videoCloudPath: gcsVideoPath // Store the GCS path early
         });
         await transcript.save();
         console.log(`[Import] Created transcript record ${transcript._id} for user ${userId}`);
 
         // Respond to client immediately
         res.status(202).json({
-            message: 'Import request received, download and processing started.',
+            message: 'Import request received, streaming to cloud and processing started.',
             transcriptId: transcript._id
         });
 
-        await downloadYouTubeVideo(url, videoPath);
+        // Await the direct stream to GCS
+        await downloadYouTubeVideoToGCS(url, gcsVideoPath);
 
-        // Start the full processing in the background using the shared processor
-        // We pass the original (sanitized) title for GCS, but the processing uses the safe path
-        processVideo(transcript._id, videoPath, finalFilename, userId, videoInfo.duration);
+        // Start the full processing in the background, now passing the GCS path
+        processVideo(transcript._id, gcsVideoPath, finalFilename, userId, videoInfo.duration);
 
     } catch (error) {
         console.error(`[Import] Failed to import video from URL: ${url}. Error: ${error.message}`);
@@ -143,5 +216,8 @@ router.post('/url', async (req, res) => {
         // Note: We don't send a response here because we already sent a 202
     }
 });
+
+// --- IMPORTANT: Call the initialization function when your module is loaded ---
+initializeCookies();
 
 module.exports = router;

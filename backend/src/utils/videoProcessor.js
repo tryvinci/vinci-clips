@@ -9,15 +9,28 @@ const { GoogleAIFileManager } = require('@google/generative-ai/server');
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
-async function processVideo(transcriptId, videoPath, originalFilename, userId, duration) {
-    console.log(`[Processor] Starting: TranscriptID=${transcriptId}, VideoPath=${videoPath}`);
+// Ensure a temporary directory exists for processing
+const tempDir = path.join(__dirname, '..', '..', 'temp', 'processing');
+if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+}
+
+async function processVideo(transcriptId, cloudPath, originalFilename, userId, duration) {
+    console.log(`[Processor] Starting: TranscriptID=${transcriptId}, CloudPath=${cloudPath}`);
     
-    const parsedPath = path.parse(videoPath);
+    // Create a temporary local path for the video file
+    const localVideoPath = path.join(tempDir, `${transcriptId}_${path.basename(cloudPath)}`);
+    const parsedPath = path.parse(localVideoPath);
     const mp3Path = path.join(parsedPath.dir, `${parsedPath.name}.mp3`);
     const thumbnailPath = path.join(parsedPath.dir, `${parsedPath.name}_thumbnail.jpg`);
     let transcript;
 
     try {
+        // --- Download the file from GCS to the temporary local path ---
+        console.log(`[Processor] Downloading ${cloudPath} to ${localVideoPath}`);
+        await bucket.file(cloudPath).download({ destination: localVideoPath });
+        console.log(`[Processor] Download complete.`);
+
         transcript = await Transcript.findById(transcriptId);
         if (!transcript) {
             throw new Error(`Transcript with ID ${transcriptId} not found.`);
@@ -28,7 +41,7 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
         await transcript.save();
         console.log(`[Processor] Status -> converting`);
 
-        const thumbnailCmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 "${thumbnailPath}"`;
+        const thumbnailCmd = `ffmpeg -i "${localVideoPath}" -ss 00:00:01 -vframes 1 "${thumbnailPath}"`;
         try {
             await new Promise((resolve, reject) => {
                 exec(thumbnailCmd, (error) => error ? reject(error) : resolve());
@@ -38,7 +51,7 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
             console.warn(`[Processor] Thumbnail generation failed: ${thumbnailError}`);
         }
 
-        const ffmpegCmd = `ffmpeg -i "${videoPath}" -vn -acodec libmp3lame -q:a 2 "${mp3Path}"`;
+        const ffmpegCmd = `ffmpeg -i "${localVideoPath}" -vn -acodec libmp3lame -q:a 2 "${mp3Path}"`;
         await new Promise((resolve, reject) => {
             exec(ffmpegCmd, (error) => {
                 if (error) return reject(new Error(`ffmpeg error: ${error.message}`));
@@ -48,21 +61,20 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
         console.log(`[Processor] MP3 conversion successful`);
 
         const userPrefix = `users/${userId}`;
-        const videoBlobPath = `${userPrefix}/videos/${originalFilename}`;
         const mp3BlobName = originalFilename.replace(/\.[^/.]+$/, ".mp3");
         const thumbnailBlobName = originalFilename.replace(/\.[^/.]+$/, "_thumbnail.jpg");
 
+        // The original video is already in GCS, so we only need to upload the MP3 and thumbnail.
         const uploadPromises = [
-            bucket.upload(videoPath, { destination: videoBlobPath }),
             bucket.upload(mp3Path, { destination: `${userPrefix}/audio/${mp3BlobName}` })
         ];
         if (fs.existsSync(thumbnailPath)) {
             uploadPromises.push(bucket.upload(thumbnailPath, { destination: `${userPrefix}/thumbnails/${thumbnailBlobName}` }));
         }
         await Promise.all(uploadPromises);
-        console.log(`[Processor] GCS uploads complete`);
+        console.log(`[Processor] GCS uploads for derivatives complete`);
 
-        const [videoUrl] = await bucket.file(videoBlobPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
+        const [videoUrl] = await bucket.file(cloudPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
         const [mp3Url] = await bucket.file(`${userPrefix}/audio/${mp3BlobName}`).getSignedUrl({ action: 'read', expires: '03-09-2491' });
         let thumbnailUrl = null;
         if (fs.existsSync(thumbnailPath)) {
@@ -107,7 +119,7 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
 
         transcript.transcript = transcriptContent;
         transcript.videoUrl = videoUrl;
-        transcript.videoCloudPath = videoBlobPath;
+        transcript.videoCloudPath = cloudPath; // It was already set, but good to be explicit
         transcript.mp3Url = mp3Url;
         transcript.duration = duration;
         transcript.thumbnailUrl = thumbnailUrl;
@@ -122,7 +134,8 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
             await transcript.save();
         }
     } finally {
-        fs.unlink(videoPath, () => {});
+        // Cleanup all temporary local files
+        fs.unlink(localVideoPath, () => {});
         fs.unlink(mp3Path, () => {});
         if (fs.existsSync(thumbnailPath)) {
             fs.unlink(thumbnailPath, () => {});
