@@ -11,7 +11,6 @@
   "dependencies": {
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.7.23",
-    "@distube/ytdl-core": "^4.16.12",
     "@google-cloud/functions": "^4.0.0",
     "@google-cloud/secret-manager": "^6.1.0",
     "@google-cloud/storage": "^7.16.0",
@@ -27,7 +26,8 @@
     "multer": "^2.0.1",
     "redis": "^5.6.0",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {
     "jest": "^29.6.2",
