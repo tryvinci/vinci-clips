@@ -3,6 +3,7 @@ FROM node:18-alpine
 
 # Install FFmpeg and other system dependencies
 RUN apk add --no-cache \
+    curl \
     ffmpeg \
     python3 \
     make \
