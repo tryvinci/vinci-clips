@@ -40,7 +40,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app','https://clips.tryvinci.com'],
+    origin: ["*",'http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app','https://clips.tryvinci.com'],
     credentials: true,
     exposedHeaders: ['Content-Length', 'X-Content-Length']
 }));
