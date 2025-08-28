@@ -86,14 +86,3 @@ The YouTube import feature was recently fixed after a multi-step debugging proce
 3.  **Solution:** The core issue was resolved by refactoring the entire processing pipeline into the shared `backend/src/utils/videoProcessor.js` module. This eliminated code duplication and ensured that both uploaded and imported videos go through the exact same, proven processing logic, which fixed all outstanding bugs.
 
 ---
-
-## 6. Identified Inefficiencies & Potential Improvements
-
-The current processing pipeline, while functional, has a significant inefficiency:
-
--   **Redundant File Upload:** The MP3 audio file is uploaded twice during every job. First, it is uploaded to Google Cloud Storage for long-term storage. Second, it is uploaded to the Gemini File API for transcription.
-
-This double-upload adds significant time to the transcription process, especially for large files.
-
-**Proposed Improvement:**
-The process can be made much faster by uploading the MP3 file **only once** to Google Cloud Storage. After the GCS upload is complete, the application should pass the GCS URL of the file directly to the Gemini API, which supports processing files from remote URLs. This would eliminate the second, redundant upload and cut down the processing time.
