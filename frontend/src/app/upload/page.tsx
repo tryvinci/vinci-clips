@@ -29,8 +29,7 @@ export default function UploadClient() {
   const [message, setMessage] = useState('');
   const [recentTranscripts, setRecentTranscripts] = useState<Transcript[]>([]);
   const [loadingTranscripts, setLoadingTranscripts] = useState(true);
-  const [importUrl, setImportUrl] = useState('');
-  const [importMode, setImportMode] = useState<'file' | 'url'>('file');
+  const [importMode, setImportMode] = useState<'file'>('file');
 
   const fetchRecentTranscripts = useCallback(async () => {
     setLoadingTranscripts(true);
@@ -143,32 +142,6 @@ export default function UploadClient() {
     }
   };
 
-  const handleUrlImport = async () => {
-    if (!importUrl.trim()) {
-      setMessage('Please enter a valid URL.');
-      return;
-    }
-    setUploading(true);
-    setUploadProgress(0);
-    setProgressText('');
-    setMessage('Extracting video information...');
-    try {
-      const token = await getToken();
-      const response = await axios.post(`${API_URL}/api/import/url`, { url: importUrl.trim() }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setMessage('Video imported successfully!');
-      setImportUrl('');
-      console.log(response.data);
-      await fetchRecentTranscripts();
-    } catch (error: any) {
-      console.error('Error importing URL:', error);
-      const errorMessage = error.response?.data?.error || 'Failed to import video from URL.';
-      setMessage(errorMessage);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -196,72 +169,28 @@ export default function UploadClient() {
             <Card className="w-full max-w-2xl mx-auto mb-12">
               <CardHeader>
                 <CardTitle className="text-3xl font-bold">Create a New Clip</CardTitle>
-                <CardDescription>Upload your video or import from URL, and our AI will find the best moments.</CardDescription>
+                <CardDescription>Upload your video and our AI will find the best moments.</CardDescription>
               </CardHeader>
               <CardContent>
                 {/* Mode Selection */}
-                <div className="flex gap-2 mb-6">
-                  <Button
-                    variant={importMode === 'file' ? 'default' : 'outline'}
-                    onClick={() => setImportMode('file')}
-                    className="flex items-center gap-2"
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Upload File
-                  </Button>
-                  <Button
-                    variant={importMode === 'url' ? 'default' : 'outline'}
-                    onClick={() => setImportMode('url')}
-                    className="flex items-center gap-2"
-                  >
-                    <LinkIcon className="h-4 w-4" />
-                    Import URL
-                  </Button>
-                </div>
 
-                {importMode === 'file' ? (
-                  <div
-                    className="border-2 border-dashed border-muted rounded-lg p-12 text-center cursor-pointer"
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    onClick={() => document.getElementById('file-upload')?.click()}
-                  >
-                    <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
-                    <p className="mt-4 text-muted-foreground">Drag & drop a video file here, or click to select a file</p>
-                    <p className="text-xs text-muted-foreground mt-2">Max file size: 2GB. Supported formats: MP4, MOV, AVI, etc.</p>
-                    <input
-                      id="file-upload"
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileChange}
-                      accept="video/*"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center">
-                      <Globe className="mx-auto h-12 w-12 text-muted-foreground" />
-                      <p className="mt-4 text-muted-foreground">Import video from URL</p>
-                      <p className="text-xs text-muted-foreground mt-2">Supported platforms: YouTube, Vimeo</p>
-                      <div className="mt-4 flex gap-2">
-                        <input
-                          type="url"
-                          placeholder="Paste video URL here..."
-                          value={importUrl}
-                          onChange={(e) => setImportUrl(e.target.value)}
-                          className="flex-1 px-3 py-2 border border-input rounded-md text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                          disabled={uploading}
-                        />
-                        <Button
-                          onClick={handleUrlImport}
-                          disabled={uploading || !importUrl.trim()}
-                        >
-                          Import
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div
+                  className="border-2 border-dashed border-muted rounded-lg p-12 text-center cursor-pointer"
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                >
+                  <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <p className="mt-4 text-muted-foreground">Drag & drop a video file here, or click to select a file</p>
+                  <p className="text-xs text-muted-foreground mt-2">Max file size: 2GB. Supported formats: MP4, MOV, AVI, etc.</p>
+                  <input
+                    id="file-upload"
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    accept="video/*"
+                  />
+                </div>
 
                 {uploading && (
                   <div className="mt-4">
