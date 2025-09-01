@@ -5,11 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const Transcript = require('../models/Transcript');
-const { Storage } = require('@google-cloud/storage');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAIFileManager } = require('@google/generative-ai/server');
 
 const router = express.Router();
-const storage = new Storage();
-const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
 // Ensure the imports directory exists
 const importsDir = 'uploads/imports';
@@ -215,7 +214,7 @@ router.post('/url', async (req, res) => {
         }
 
         // Create initial transcript record
-        const transcript = new Transcript({
+        let transcript = await Transcript.create({
             originalFilename: `${videoInfo.title}.mp4`,
             transcript: [],
             status: 'uploading',
@@ -224,7 +223,6 @@ router.post('/url', async (req, res) => {
             externalVideoId: videoInfo.videoId
         });
         
-        await transcript.save();
         console.log(`Created transcript record ${transcript._id} for ${platform} import`);
 
         // For YouTube, we can download directly
@@ -237,8 +235,7 @@ router.post('/url', async (req, res) => {
                 await downloadYouTubeVideo(url, videoPath);
                 
                 // Update status to converting
-                transcript.status = 'converting';
-                await transcript.save();
+                await Transcript.findByIdAndUpdate(transcript._id, { status: 'converting' });
                 
                 // Process similar to regular upload
                 const mp3Path = `${videoPath}.mp3`;
@@ -268,62 +265,101 @@ router.post('/url', async (req, res) => {
                     console.warn('Thumbnail generation failed:', thumbnailError);
                 }
                 
-                // Upload to cloud storage
-                const videoBlobPath = `videos/${transcript.originalFilename}`;
-                const mp3BlobPath = `audio/${transcript.originalFilename.replace(/\.mp4$/, '.mp3')}`;
-                const thumbnailBlobPath = `thumbnails/${transcript.originalFilename.replace(/\.mp4$/, '_thumbnail.jpg')}`;
-                
-                const uploadPromises = [
-                    bucket.upload(videoPath, { destination: videoBlobPath }),
-                    bucket.upload(mp3Path, { destination: mp3BlobPath })
-                ];
-                
+                const videoFileName = transcript.originalFilename;
+                const mp3FileName = videoFileName.replace(/\.[^/.]+$/, "") + ".mp3";
+                const thumbnailFileName = videoFileName.replace(/\.[^/.]+$/, "") + "_thumbnail.jpg";
+
+                const videoDestPath = path.join('uploads', videoFileName);
+                const mp3DestPath = path.join('uploads', mp3FileName);
+                const thumbnailDestPath = path.join('uploads', thumbnailFileName);
+
+                // Ensure storage directories exist
+                fs.mkdirSync(path.dirname(videoDestPath), { recursive: true });
+
+                fs.renameSync(videoPath, videoDestPath);
+                fs.renameSync(mp3Path, mp3DestPath);
                 if (fs.existsSync(thumbnailPath)) {
-                    uploadPromises.push(bucket.upload(thumbnailPath, { destination: thumbnailBlobPath }));
+                    fs.renameSync(thumbnailPath, thumbnailDestPath);
                 }
-                
-                await Promise.all(uploadPromises);
-                
-                // Get signed URLs
-                const [videoUrl] = await bucket.file(videoBlobPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                const [mp3Url] = await bucket.file(mp3BlobPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                
-                let thumbnailUrl = null;
-                if (fs.existsSync(thumbnailPath)) {
-                    const [thumbUrl] = await bucket.file(thumbnailBlobPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                    thumbnailUrl = thumbUrl;
-                }
+
+                const videoUrl = `/uploads/${videoFileName}`;
+                const mp3Url = `/uploads/${mp3FileName}`;
+                const thumbnailUrl = fs.existsSync(thumbnailDestPath) ? `/uploads/${thumbnailFileName}` : null;
                 
                 // Update transcript with URLs and mark as ready for transcription
-                transcript.videoUrl = videoUrl;
-                transcript.videoCloudPath = videoBlobPath;
-                transcript.mp3Url = mp3Url;
-                transcript.thumbnailUrl = thumbnailUrl;
-                transcript.duration = videoInfo.duration;
-                transcript.status = 'transcribing';
-                await transcript.save();
+                await Transcript.findByIdAndUpdate(transcript._id, {
+                    videoUrl: videoUrl,
+                    mp3Url: mp3Url,
+                    thumbnailUrl: thumbnailUrl,
+                    duration: videoInfo.duration,
+                    status: 'transcribing'
+                });
                 
-                // Cleanup local files
-                fs.unlink(videoPath, () => {});
-                fs.unlink(mp3Path, () => {});
-                if (fs.existsSync(thumbnailPath)) {
-                    fs.unlink(thumbnailPath, () => {});
-                }
+                // Start transcription
+                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+                const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+
+                const uploadResult = await fileManager.uploadFile(mp3DestPath, {
+                    mimeType: 'audio/mpeg',
+                    displayName: mp3FileName
+                });
+
+                const model = genAI.getGenerativeModel({
+                    model: process.env.LLM_MODEL || 'gemini-1.5-flash',
+                });
                 
-                // Continue with transcription (similar to upload.js)
-                // ... (transcription logic would go here)
+                const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
+
+                const prompt = "Transcribe the provided audio with word-level timestamps and identify the speaker for each word. Format the output as a JSON array of objects, where each object represents a single word with precise millisecond timing. Each object should have 'start' (in format MM:SS:mmm), 'end' (in format MM:SS:mmm), 'text' (single word), and 'speaker' fields. For example: [{'start': '00:00:000', 'end': '00:00:450', 'text': 'Hello', 'speaker': 'Speaker 1'}, {'start': '00:00:450', 'end': '00:00:890', 'text': 'world', 'speaker': 'Speaker 1'}]";
+
+                const result = await model.generateContent({
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { text: prompt },
+                            audioPart,
+                        ],
+                    }],
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                        responseSchema: {
+                            type: 'ARRAY',
+                            items: {
+                                type: 'OBJECT',
+                                properties: {
+                                    start: { type: 'STRING' },
+                                    end: { type: 'STRING' },
+                                    text: { type: 'STRING' },
+                                    speaker: { type: 'STRING' },
+                                },
+                                required: ['start', 'end', 'text', 'speaker'],
+                                propertyOrdering: ['start', 'end', 'text', 'speaker'],
+                            },
+                        },
+                    },
+                });
+
+                const response = await result.response;
+                const transcriptContent = JSON.parse(response.text());
+
+                // Update transcript with transcription and mark as completed
+                const finalTranscript = await Transcript.findByIdAndUpdate(transcript._id, {
+                    transcript: transcriptContent,
+                    status: 'completed'
+                }, { new: true });
+
+                console.log(`Transcript ${transcript._id} for imported video completed successfully`);
                 
                 res.status(200).json({
-                    message: 'Video imported successfully',
-                    transcript: transcript,
+                    message: 'Video imported and transcribed successfully',
+                    transcript: finalTranscript,
                     videoInfo: videoInfo
                 });
                 
             } catch (downloadError) {
-                console.error('Download error:', downloadError);
-                transcript.status = 'failed';
-                await transcript.save();
-                return res.status(500).json({ error: 'Failed to download video' });
+                console.error('Download or transcription error:', downloadError);
+                await Transcript.findByIdAndUpdate(transcript._id, { status: 'failed' });
+                return res.status(500).json({ error: 'Failed to download or transcribe video' });
             }
         } else {
             // For platforms that don't support direct download, return info only

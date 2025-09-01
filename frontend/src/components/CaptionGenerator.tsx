@@ -62,7 +62,8 @@ export default function CaptionGenerator({ transcriptId, videoUrl }: CaptionGene
             );
 
             if (response.data.success) {
-                setGeneratedVideo(response.data.captionedVideoUrl);
+                const fullUrl = `${API_URL}${response.data.captionedVideoUrl}`;
+                setGeneratedVideo(fullUrl);
             } else {
                 setError(response.data.error || 'Failed to generate captioned video');
             }

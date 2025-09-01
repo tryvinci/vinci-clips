@@ -178,7 +178,7 @@ Transcript: ${fullTranscriptText}`;
         console.log(`Final result: ${validatedClips.length} valid clips out of ${suggestedClips.length} suggested`);
         
         transcriptDoc.clips = validatedClips;
-        await transcriptDoc.save();
+        await Transcript.findByIdAndUpdate(transcriptDoc._id, transcriptDoc);
 
         res.json(transcriptDoc);
 

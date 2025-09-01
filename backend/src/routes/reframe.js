@@ -3,15 +3,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
-const { Storage } = require('@google-cloud/storage');
 const Transcript = require('../models/Transcript');
 const logger = require('../utils/logger');
 const axios = require('axios');
 const { exec } = require('child_process'); // Added for shell script execution
 
 const router = express.Router();
-const storage = new Storage();
-const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
 
 // Configure multer for temporary file storage
 const upload = multer({
@@ -661,49 +658,17 @@ router.post('/analyze', upload.single('video'), async (req, res) => {
                 return res.status(404).json({ error: 'Transcript not found' });
             }
             
-            // Download video from cloud storage for processing
-            const tempVideoPath = path.join('uploads/temp', `reframe_${transcriptId}_${Date.now()}.mp4`);
-            
-            // Use generated clip URL if provided, otherwise use original video
             const videoUrlToUse = generatedClipUrl || transcript.videoUrl;
-            
             if (!videoUrlToUse) {
                 return res.status(404).json({ error: 'Video not found' });
             }
-            
-            // Extract filename and construct proper cloud path
-            let videoCloudPath;
-            if (videoUrlToUse.includes('storage.googleapis.com')) {
-                // Extract from full URL
-                const urlParts = videoUrlToUse.split('/');
-                const filename = urlParts.pop().split('?')[0];
-                
-                // Determine folder based on URL structure
-                if (videoUrlToUse.includes('/clips/')) {
-                    videoCloudPath = `clips/${filename}`;
-                } else if (videoUrlToUse.includes('/videos/')) {
-                    videoCloudPath = `videos/${filename}`;
-                } else {
-                    // Default to clips folder for generated clips
-                    videoCloudPath = filename.includes('clip') ? `clips/${filename}` : `videos/${filename}`;
-                }
+
+            // If it's a generated clip, the full path is in the URL. Otherwise, use basename.
+            if (generatedClipUrl) {
+                videoPath = path.join(__dirname, '..', '..', videoUrlToUse.substring(1));
             } else {
-                // Direct filename - default to clips folder if it's a generated clip
-                const filename = videoUrlToUse.split('/').pop().split('?')[0];
-                videoCloudPath = generatedClipUrl ? `clips/${filename}` : `videos/${filename}`;
+                videoPath = path.join(__dirname, '..', '..', 'uploads', path.basename(videoUrlToUse));
             }
-            
-            logger.info('Downloading video for reframe', { 
-                transcriptId, 
-                originalUrl: videoUrlToUse,
-                isGeneratedClip: !!generatedClipUrl,
-                cloudPath: videoCloudPath 
-            });
-            
-            const videoFile = bucket.file(videoCloudPath);
-            
-            await videoFile.download({ destination: tempVideoPath });
-            videoPath = tempVideoPath;
             
             // Get video dimensions from actual file metadata
             videoDimensions = await new Promise((resolve, reject) => {
@@ -766,23 +731,15 @@ router.post('/analyze', upload.single('video'), async (req, res) => {
         
         const previewPath = await generatePreviewFrame(videoPath, cropParams, previewTimestamp);
         
-        // Upload preview to cloud storage
-        const previewCloudPath = `previews/reframe_${Date.now()}.jpg`;
-        await bucket.upload(previewPath, {
-            destination: previewCloudPath,
-            metadata: {
-                cacheControl: 'public, max-age=3600'
-            }
-        });
+        const previewFileName = `reframe_${Date.now()}.jpg`;
+        const previewDestPath = path.join('uploads', 'previews', previewFileName);
+        fs.mkdirSync(path.dirname(previewDestPath), { recursive: true });
+        fs.renameSync(previewPath, previewDestPath);
+        const previewUrl = `/uploads/previews/${previewFileName}`;
         
-        const previewUrl = `https://storage.googleapis.com/${bucket.name}/${previewCloudPath}`;
-        
-        // Cleanup temporary files
+        // Cleanup temporary preview file
         try {
             fs.unlink(previewPath, () => {});
-            if (transcriptId && videoPath && fs.existsSync(videoPath)) {
-                fs.unlink(videoPath, () => {});
-            }
         } catch (cleanupError) {
             logger.logError(cleanupError, { context: 'cleanup_error' });
         }
@@ -860,46 +817,17 @@ router.post('/generate', async (req, res) => {
         }
         
         // Download the video (generated clip if provided, otherwise original video)
-        const tempVideoPath = path.join('uploads/temp', `reframe_source_${transcriptId}_${Date.now()}.mp4`);
-        
-        // Use generated clip URL if provided, otherwise use original video
         const videoUrlToUse = generatedClipUrl || transcript.videoUrl;
-        
         if (!videoUrlToUse) {
             return res.status(404).json({ error: 'Video not found' });
         }
         
-        // Extract filename and construct proper cloud path
-        let videoCloudPath;
-        if (videoUrlToUse.includes('storage.googleapis.com')) {
-            // Extract from full URL
-            const urlParts = videoUrlToUse.split('/');
-            const filename = urlParts.pop().split('?')[0];
-            
-            // Determine folder based on URL structure
-            if (videoUrlToUse.includes('/clips/')) {
-                videoCloudPath = `clips/${filename}`;
-            } else if (videoUrlToUse.includes('/videos/')) {
-                videoCloudPath = `videos/${filename}`;
-            } else {
-                // Default to clips folder for generated clips
-                videoCloudPath = filename.includes('clip') ? `clips/${filename}` : `videos/${filename}`;
-            }
+        let tempVideoPath;
+        if (generatedClipUrl) {
+            tempVideoPath = path.join(__dirname, '..', '..', videoUrlToUse.substring(1));
         } else {
-            // Direct filename - default to clips folder if it's a generated clip
-            const filename = videoUrlToUse.split('/').pop().split('?')[0];
-            videoCloudPath = generatedClipUrl ? `clips/${filename}` : `videos/${filename}`;
+            tempVideoPath = path.join(__dirname, '..', '..', 'uploads', path.basename(videoUrlToUse));
         }
-        
-        logger.info('Downloading video for reframe generation', { 
-            transcriptId, 
-            originalUrl: videoUrlToUse,
-            isGeneratedClip: !!generatedClipUrl,
-            cloudPath: videoCloudPath 
-        });
-        
-        const videoFile = bucket.file(videoCloudPath);
-        await videoFile.download({ destination: tempVideoPath });
         
         // Generate output filename - sanitize to remove invalid path characters
         const timestamp = Date.now(); // Use timestamp for uniqueness
@@ -996,22 +924,10 @@ router.post('/generate', async (req, res) => {
                 .run();
         });
         
-        // Upload reframed video to cloud storage
-        const cloudPath = `clips/reframed/${outputFilename}`;
-        await bucket.upload(outputPath, {
-            destination: cloudPath,
-            metadata: {
-                cacheControl: 'public, max-age=86400',
-                metadata: {
-                    transcriptId,
-                    targetPlatform,
-                    originalVideo: transcript.originalFilename,
-                    cropParameters: JSON.stringify(cropParameters)
-                }
-            }
-        });
-        
-        const reframedUrl = `https://storage.googleapis.com/${bucket.name}/${cloudPath}`;
+        const reframedDestPath = path.join('uploads', 'clips', 'reframed', outputFilename);
+        fs.mkdirSync(path.dirname(reframedDestPath), { recursive: true });
+        fs.renameSync(outputPath, reframedDestPath);
+        const reframedUrl = `/uploads/clips/reframed/${outputFilename}`;
         
         // Cleanup temporary files
         fs.unlink(tempVideoPath, () => {});
@@ -1094,38 +1010,16 @@ router.post('/adjust', async (req, res) => {
         }
         
         // Download video for preview generation
-        const tempVideoPath = path.join('uploads/temp', `adjust_${transcriptId}_${Date.now()}.mp4`);
-        
-        // Extract filename and construct proper cloud path
-        let videoCloudPath;
-        if (transcript.videoUrl.includes('storage.googleapis.com')) {
-            // Extract from full URL
-            videoCloudPath = transcript.videoUrl.split('/').pop().split('?')[0];
-            if (!videoCloudPath.startsWith('videos/')) {
-                videoCloudPath = `videos/${videoCloudPath}`;
-            }
-        } else {
-            // Direct filename - ensure it's in videos/ folder
-            const filename = transcript.videoUrl.split('/').pop().split('?')[0];
-            videoCloudPath = `videos/${filename}`;
-        }
-        
-        const videoFile = bucket.file(videoCloudPath);
-        await videoFile.download({ destination: tempVideoPath });
+        const tempVideoPath = path.join(__dirname, '..', '..', 'uploads', path.basename(transcript.videoUrl));
         
         // Generate new preview with adjusted crop
         const previewPath = await generatePreviewFrame(tempVideoPath, cropParameters);
         
-        // Upload preview
-        const previewCloudPath = `previews/adjusted_${Date.now()}.jpg`;
-        await bucket.upload(previewPath, {
-            destination: previewCloudPath,
-            metadata: {
-                cacheControl: 'public, max-age=3600'
-            }
-        });
-        
-        const previewUrl = `https://storage.googleapis.com/${bucket.name}/${previewCloudPath}`;
+        const previewFileName = `adjusted_${Date.now()}.jpg`;
+        const previewDestPath = path.join('uploads', 'previews', previewFileName);
+        fs.mkdirSync(path.dirname(previewDestPath), { recursive: true });
+        fs.renameSync(previewPath, previewDestPath);
+        const previewUrl = `/uploads/previews/${previewFileName}`;
         
         // Cleanup
         fs.unlink(tempVideoPath, () => {});
@@ -1176,56 +1070,28 @@ router.post('/streamer-gameplay', async (req, res) => {
     }
     
     // Create temporary directories
-    const tempDir = 'uploads/temp';
+    const tempDir = path.join(__dirname, '..', '..', 'uploads', 'temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
     
     // Create temporary file paths with fixed naming for debugging
     const timestamp = Date.now();
-    const tempVideoPath = path.join(tempDir, `source_${timestamp}.mp4`);
+    const sourceVideoPath = path.join(__dirname, '..', '..', 'uploads', path.basename(transcript.videoUrl));
     const tempWebcamPath = path.join(tempDir, `webcam_${timestamp}.mp4`);
     const tempGameplayPath = path.join(tempDir, `gameplay_${timestamp}.mp4`);
     const finalOutputPath = path.join(tempDir, `final_${timestamp}.mp4`);
     const outputFilename = outputName || `streamer_gameplay_${timestamp}.mp4`;
     const publicOutputPath = path.join(tempDir, outputFilename);
     
-    // Download video directly using the URL from transcript
-    logger.info('Downloading video for streamer gameplay processing', { 
+    logger.info('Starting streamer gameplay processing', { 
       transcriptId,
-      videoUrl: transcript.videoUrl,
-      tempVideoPath
+      sourceVideoPath
     });
-    
-    try {
-      // Use axios to download the video directly from the URL
-      const response = await axios({
-        method: 'GET',
-        url: transcript.videoUrl,
-        responseType: 'stream',
-        timeout: 300000 // 5 minutes timeout
-      });
-      
-      const writer = fs.createWriteStream(tempVideoPath);
-      response.data.pipe(writer);
-      
-      await new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
-      });
-      
-      logger.info('Video downloaded successfully', { tempVideoPath });
-    } catch (downloadError) {
-      logger.error('Failed to download video:', downloadError.message);
-      return res.status(500).json({
-        error: 'Failed to download video',
-        details: downloadError.message
-      });
-    }
     
     // Get video duration
     const videoDuration = await new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(tempVideoPath, (err, metadata) => {
+      ffmpeg.ffprobe(sourceVideoPath, (err, metadata) => {
         if (err) return reject(err);
         const duration = metadata.format.duration || 0;
         resolve(duration);
@@ -1237,7 +1103,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     // Step 1: Extract webcam area
     logger.info('Extracting webcam area', { webcamArea });
     await new Promise((resolve, reject) => {
-      ffmpeg(tempVideoPath)
+      ffmpeg(sourceVideoPath)
         .outputOptions([
           '-c:v libx264',
           '-crf 23',
@@ -1259,7 +1125,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     // Step 2: Extract gameplay area
     logger.info('Extracting gameplay area', { gameplayArea });
     await new Promise((resolve, reject) => {
-      ffmpeg(tempVideoPath)
+      ffmpeg(sourceVideoPath)
         .outputOptions([
           '-c:v libx264',
           '-crf 23',
@@ -1287,144 +1153,45 @@ router.post('/streamer-gameplay', async (req, res) => {
     const webcamY = Math.round((outputHeight * webcamPosition) / 100);
     const gameplayY = webcamY + webcamHeight;
     
-    // Step 3: Create a script to combine the videos using ffmpeg command line
-    // This is more reliable than complex filters
-    const scriptPath = path.join(tempDir, `combine_script_${timestamp}.sh`);
-    
-    // Create a script that uses ffmpeg directly - with more explicit positioning
-    const ffmpegCommand = `
-#!/bin/bash
-# Get video dimensions
-ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 ${tempVideoPath} > ${tempDir}/dimensions_${timestamp}.txt
-SOURCE_WIDTH=\$(cat ${tempDir}/dimensions_${timestamp}.txt | cut -d',' -f1)
-SOURCE_HEIGHT=\$(cat ${tempDir}/dimensions_${timestamp}.txt | cut -d',' -f2)
-
-echo "Source dimensions: \$SOURCE_WIDTH x \$SOURCE_HEIGHT"
-
-# Create a black background with same duration as source
-ffmpeg -y -f lavfi -i color=c=black:s=${outputWidth}x${outputHeight} -t ${videoDuration} ${tempDir}/bg_${timestamp}.mp4
-
-# Extract frames from webcam and gameplay for debugging
-ffmpeg -y -i ${tempWebcamPath} -vframes 1 ${tempDir}/webcam_frame_${timestamp}.jpg
-ffmpeg -y -i ${tempGameplayPath} -vframes 1 ${tempDir}/gameplay_frame_${timestamp}.jpg
-
-# Scale webcam to fit width
-WEBCAM_SCALED_WIDTH=${outputWidth}
-WEBCAM_SCALED_HEIGHT=\$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 ${tempWebcamPath} | xargs -I {} echo "scale=2; {} * ${outputWidth} / \$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 ${tempWebcamPath})" | bc | xargs printf "%.0f")
-echo "Webcam scaled dimensions: \$WEBCAM_SCALED_WIDTH x \$WEBCAM_SCALED_HEIGHT"
-
-# Scale gameplay to fit width
-GAMEPLAY_SCALED_WIDTH=${outputWidth}
-GAMEPLAY_SCALED_HEIGHT=\$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 ${tempGameplayPath} | xargs -I {} echo "scale=2; {} * ${outputWidth} / \$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 ${tempGameplayPath})" | bc | xargs printf "%.0f")
-echo "Gameplay scaled dimensions: \$GAMEPLAY_SCALED_WIDTH x \$GAMEPLAY_SCALED_HEIGHT"
-
-# Create a single command that does all the work
-ffmpeg -y \\
-  -i ${tempVideoPath} \\
-  -i ${tempWebcamPath} \\
-  -i ${tempGameplayPath} \\
-  -filter_complex "
-    [1:v]scale=${outputWidth}:-1[webcam_scaled];
-    [2:v]scale=${outputWidth}:-1[gameplay_scaled];
-    color=black:s=${outputWidth}x${outputHeight}:d=${videoDuration}[bg];
-    [bg][webcam_scaled]overlay=0:${webcamY}[with_webcam];
-    [with_webcam][gameplay_scaled]overlay=0:${gameplayY}
-  " \\
-  -map 0:a \\
-  -c:v libx264 -crf 23 -preset medium \\
-  -c:a aac -b:a 128k \\
-  ${finalOutputPath}
-
-# Create a copy with the requested filename for direct download
-cp ${finalOutputPath} ${publicOutputPath}
-
-echo "Finished processing. Output at: ${finalOutputPath} and ${publicOutputPath}"
-`;
-    
-    fs.writeFileSync(scriptPath, ffmpegCommand);
-    fs.chmodSync(scriptPath, '755');
-    
-    // Execute the script
-    logger.info('Running ffmpeg script to combine videos');
+    // Step 3: Combine the videos
     await new Promise((resolve, reject) => {
-      exec(`bash ${scriptPath}`, (error, stdout, stderr) => {
-        if (error) {
-          logger.error('Script execution error:', error.message);
-          logger.error('Script stderr:', stderr);
-          reject(error);
-        } else {
-          logger.info('Script output:', stdout);
-          resolve(stdout);
-        }
-      });
+        ffmpeg()
+            .input(tempGameplayPath)
+            .input(tempWebcamPath)
+            .input(sourceVideoPath) // for audio
+            .complexFilter([
+                `[0:v]scale=${outputWidth}:-1[gameplay]`,
+                `[1:v]scale=${outputWidth}:${webcamHeight}[webcam]`,
+                `color=black:s=${outputWidth}x${outputHeight}:d=${videoDuration}[bg]`,
+                `[bg][gameplay]overlay=0:${gameplayY}[tmp]`,
+                `[tmp][webcam]overlay=0:${webcamY}`
+            ])
+            .outputOptions([
+                '-map', '2:a',
+                '-c:v', 'libx264',
+                '-crf', '23',
+                '-preset', 'medium',
+                '-c:a', 'aac',
+                '-b:a', '128k'
+            ])
+            .output(finalOutputPath)
+            .on('end', resolve)
+            .on('error', reject)
+            .run();
     });
     
-    // Check if the output files exist
-    if (!fs.existsSync(finalOutputPath)) {
-      logger.error('Output file not created', { finalOutputPath });
-      return res.status(500).json({
-        error: 'Failed to create output file',
-        details: 'The ffmpeg process did not generate an output file'
-      });
+    const destDir = path.join(__dirname, '..', '..', 'uploads', 'temp');
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
     }
-    
-    if (!fs.existsSync(publicOutputPath)) {
-      logger.error('Public output file not created', { publicOutputPath });
-      // Copy it again if it doesn't exist
-      fs.copyFileSync(finalOutputPath, publicOutputPath);
-    }
-    
-    logger.info('Output files created successfully', { 
-      finalOutputPath,
-      publicOutputPath
-    });
-    
-    // Upload processed video to cloud storage
-    const cloudPath = `clips/streamer_gameplay/${outputFilename}`;
-    await bucket.upload(finalOutputPath, {
-      destination: cloudPath,
-      metadata: {
-        cacheControl: 'public, max-age=86400',
-        metadata: {
-          transcriptId,
-          originalVideo: transcript.originalFilename
-        }
-      }
-    });
-    
-    // Get a signed URL for the uploaded file
-    const [processedVideoUrl] = await bucket.file(cloudPath).getSignedUrl({
-      action: 'read',
-      expires: '03-09-2491'
-    });
-    
-    // Create a local URL for direct download
-    const localDownloadUrl = `/clips/download/${outputFilename}`;
-    
-    // Don't delete the files immediately for debugging purposes
-    // We'll let them be cleaned up by the system later
-    logger.info('Files created for debugging:', {
-      tempVideoPath,
-      tempWebcamPath,
-      tempGameplayPath,
-      finalOutputPath,
-      publicOutputPath,
-      scriptPath
-    });
+    const destPath = path.join(destDir, outputFilename);
+    fs.renameSync(finalOutputPath, destPath);
+    const processedVideoUrl = `/uploads/temp/${outputFilename}`;
     
     res.json({
       success: true,
       processedVideoUrl,
-      localDownloadUrl,
-      outputName: outputFilename,
-      debugFiles: {
-        tempVideoPath,
-        tempWebcamPath,
-        tempGameplayPath,
-        finalOutputPath,
-        publicOutputPath,
-        scriptPath
-      }
+      outputName: outputFilename
     });
     
   } catch (error) {

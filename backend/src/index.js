@@ -8,12 +8,11 @@ require('dotenv').config();
 // In Cloud Run, the attached service account's identity is used automatically.
 
 const logger = require('./utils/logger');
-const connectDB = require('./db');
 const mainRoutes = require('./routes/index');
 
 const app = express();
 const port = process.env.PORT || 8080;
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001', 'https://vinci-clips-frontend-382403086889.us-central1.run.app','https://clips.tryvinci.com'];
+const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
 
 app.use((req, res, next) => {
 
@@ -52,9 +51,11 @@ app.use(logger.requestMiddleware);
 // Mount routes
 app.use('/clips', mainRoutes);
 
+// Serve static files from the 'uploads' directory
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 async function startServer() {
     try {
-        await connectDB();
         app.listen(port, () => {
             logger.info(`Server started successfully on port ${port}`);
         });
