@@ -55,17 +55,34 @@ GEMINI_API_KEY=your-gemini-api-key-here
 ```
 
 ### 4. Start the Application
-You will need to run the backend and frontend in separate terminal windows.
+To run the app concurrently
+
+**You first have to install concurrently**
+```bash
+# Start the frontend and the backend server
+npm install concurrently --save-dev
+
+#global installation
+npm install -g concurrently
+```
 
 **In your first terminal (from the project root):**
 ```bash
-# Start the backend server
+npm start
+```
+
+
+
+
+You can also run the backend and frontend in separate terminal windows.
+
+**In your first terminal (from the project root):**
+```bash
 npm run start:backend
 ```
 
 **In your second terminal (from the project root):**
 ```bash
-# Start the frontend development server
 npm run start:frontend
 ```
 
