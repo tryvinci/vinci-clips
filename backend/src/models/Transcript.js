@@ -1,72 +1,18 @@
-const mongoose = require('mongoose');
+const { Transcript, newTranscript } = require('../localdb');
 
-const TranscriptSchema = new mongoose.Schema({
-    originalFilename: {
-        type: String,
-        required: true,
-    },
-    transcript: [
-        {
-            start: { type: String, required: true },
-            end: { type: String, required: true },
-            text: { type: String, required: true },
-            speaker: { type: String, required: false }, // Added speaker field
-        },
-    ],
-    videoUrl: {
-        type: String,
-        required: false,
-        default: '',
-    },
-    videoCloudPath: {
-        type: String, // Store the actual cloud storage path for video processing
-        required: false,
-    },
-    mp3Url: {
-        type: String,
-        required: false,
-        default: '',
-    },
-    clips: [{
-        title: String,
-        start: Number, // For single segment clips
-        end: Number,   // For single segment clips
-        segments: [{   // For multi-segment clips
-            start: Number,
-            end: Number,
-        }],
-        totalDuration: Number, // Total duration in seconds
-    }],
-    duration: {
-        type: Number, // Duration in seconds
-        required: false,
-    },
-    status: {
-        type: String,
-        enum: ['uploading', 'converting', 'transcribing', 'completed', 'failed'],
-        default: 'uploading',
-        required: true,
-    },
-    thumbnailUrl: {
-        type: String, // URL to video thumbnail
-        required: false,
-    },
-    importUrl: {
-        type: String, // Original URL for imported videos
-        required: false,
-    },
-    platform: {
-        type: String, // Platform source (youtube, vimeo, instagram, etc.)
-        required: false,
-    },
-    externalVideoId: {
-        type: String, // External video ID from platform
-        required: false,
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
+// This file now acts as a pass-through to the localdb module.
+// This keeps the model import paths consistent across the application.
 
-module.exports = mongoose.model('Transcript', TranscriptSchema); 
+// We need to export a constructor-like function for `new Transcript()` to work
+const TranscriptModel = function(data) {
+    return newTranscript(data);
+};
+
+// Attach the static methods
+TranscriptModel.find = Transcript.find;
+TranscriptModel.findById = Transcript.findById;
+TranscriptModel.create = Transcript.create;
+TranscriptModel.findByIdAndUpdate = Transcript.findByIdAndUpdate;
+TranscriptModel.findByIdAndDelete = Transcript.findByIdAndDelete;
+
+module.exports = TranscriptModel;

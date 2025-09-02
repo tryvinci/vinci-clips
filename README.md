@@ -18,7 +18,7 @@ Vinci Clips is an open-source platform that leverages artificial intelligence to
 - **Automatic Transcription**: Speaker diarization with precise timestamp alignment
 - **Smart Clip Generation**: AI suggests optimal clip segments based on content analysis
 - **Multi-Format Support**: Support for major video formats with automatic conversion
-- **Cloud Integration**: Seamless Google Cloud Storage integration for scalability
+
 
 ### Content Processing
 - **Video-to-Audio Conversion**: High-quality audio extraction using FFmpeg
@@ -44,12 +44,12 @@ Vinci Clips is an open-source platform that leverages artificial intelligence to
          │                        ▼                        │
          │              ┌─────────────────┐                │
          │              │   Database      │                │
-         │              │   MongoDB       │                │
+         │              │   LocalDB       │                │
          │              └─────────────────┘                │
          │                                                 │
          │              ┌─────────────────┐                │
          └──────────────│   File Storage  │                │
-                        │   Google Cloud  │                │
+                        │   Local system  │                │
                         └─────────────────┘                │
                                                            │
                         ┌─────────────────┐                │
@@ -76,8 +76,7 @@ Before running Vinci Clips, ensure you have the following installed:
 - **FFmpeg** (installed and available in your system PATH)
 - **MongoDB** (local installation or cloud instance)
 
-Additionally, you'll need accounts and API keys for:
-- **Google Cloud Platform** (for storage and service account)
+Additionally, you'll and API keys for:
 - **Google Gemini API** (for AI transcription services)
 
 ### Installation
@@ -107,27 +106,14 @@ Additionally, you'll need accounts and API keys for:
    # Server Configuration
    PORT=8080
    
-   # Database
-   DB_URL=mongodb://localhost:27017/vinci-clips
-   
-   # Google Cloud Storage
-   GCP_BUCKET_NAME=your-bucket-name
-   GCP_SERVICE_ACCOUNT_PATH=./gcp-service-account.json
-   
    # AI Services
    GEMINI_API_KEY=your-gemini-api-key
    ```
    
    **Note**: For Docker deployment, see `docker-setup.md` for different environment configuration.
 
-4. **Set up Google Cloud Storage**
-   
-   - Create a Google Cloud Storage bucket
-   - Download service account credentials JSON file
-   - Place the file in your backend directory
-   - Update `GCP_SERVICE_ACCOUNT_PATH` in your `.env` file
 
-5. **Start the application**
+4. **Start the application (install concurrently)**
    ```bash
    # Start both frontend and backend
    npm start
@@ -137,7 +123,7 @@ Additionally, you'll need accounts and API keys for:
    npm run start:frontend # Frontend on port 3000
    ```
 
-6. **Access the application**
+5. **Access the application**
    
    Open your browser and navigate to `http://localhost:3000`
 
@@ -189,6 +175,8 @@ vinci-clips/
 │   │   ├── models/         # MongoDB schemas
 │   │   ├── routes/         # API endpoints
 │   │   └── index.js        # Server entry point
+|   └── storage/db.json     # All your data is stored here
+│   └── uploads             # All your videos are stored here
 │   └── package.json
 ├── frontend/               # Next.js application
 │   ├── src/
@@ -244,14 +232,11 @@ docker-compose -f docker-compose.prod.yml up -d
 
 ### Environment Variables
 
-For production deployment, ensure all environment variables are properly configured:
+For local deployment, ensure all environment variables are properly configured:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `PORT` | Backend server port | No (default: 8080) |
-| `DB_URL` | MongoDB connection string | Yes |
-| `GCP_BUCKET_NAME` | Google Cloud Storage bucket | Yes |
-| `GCP_SERVICE_ACCOUNT_PATH` | Path to GCS service account JSON | Yes |
 | `GEMINI_API_KEY` | Google Gemini API key | Yes |
 
 ## Contributing
@@ -284,6 +269,7 @@ We welcome contributions to Vinci Clips! Please see our [Contributing Guidelines
 - MongoDB data persistence with comprehensive status tracking
 - React/Next.js frontend with responsive design
 - Basic clip generation from transcript segments
+- Streamer's Webcam And Gameplay Video into a reel conversion
 
 ### Caption System (Recently Added)
 - TikTok/Reels style caption generation with 5 popular styles

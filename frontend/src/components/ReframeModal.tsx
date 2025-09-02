@@ -77,15 +77,6 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   isOpen, onClose, transcriptId, videoUrl, originalFilename, generatedClipUrl
 }) => {
   // --- State Management (no major changes, `currentTab` removed) ---
-  const getProxiedVideoUrl = (originalUrl: string) => {
-    if (originalUrl.includes('storage.googleapis.com')) {
-      const filename = originalUrl.split('/').pop()?.split('?')[0];
-      return `${API_URL}/clips/video-proxy/${filename}`;
-    }
-    return originalUrl;
-  };
-  
-  const proxiedVideoUrl = getProxiedVideoUrl(videoUrl);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('tiktok');
   const [detections, setDetections] = useState<any[]>([]);
   const [cropParameters, setCropParameters] = useState<CropParameters | null>(null);
@@ -192,9 +183,9 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <video src={reframedVideo.url} controls className="w-full rounded-lg mx-auto max-w-sm" />
+                  <video src={`${API_URL}${reframedVideo.url}`} controls className="w-full rounded-lg mx-auto max-w-sm" />
                   <Button asChild size="lg" className="w-full max-w-sm">
-                    <a href={reframedVideo.url} download={reframedVideo.filename}>
+                    <a href={`${API_URL}${reframedVideo.url}`} download={reframedVideo.filename}>
                       <Download className="w-4 h-4 mr-2" />
                       Download Video
                     </a>
@@ -231,7 +222,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
                 <CardContent>
                   {previewUrl && cropParameters ? (
                     <div className="grid md:grid-cols-2 gap-6 items-center">
-                      <img src={previewUrl} alt="Reframed preview" className="w-full rounded-lg border" />
+                      <img src={`${API_URL}${previewUrl}`} alt="Reframed preview" className="w-full rounded-lg border" />
                       <div className="space-y-4">
                         <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                           <h4 className="font-semibold text-green-800">Analysis Complete</h4>
@@ -242,7 +233,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
                     </div>
                   ) : (
                     <>
-                      <SubjectDetection videoUrl={proxiedVideoUrl} onDetectionComplete={handleDetectionComplete} onError={setError} />
+                      <SubjectDetection videoUrl={`${API_URL}${videoUrl}`} onDetectionComplete={handleDetectionComplete} onError={setError} />
                       {isAnalyzing && <div className="mt-4 flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /><span>Calculating optimal crop...</span></div>}
                     </>
                   )}

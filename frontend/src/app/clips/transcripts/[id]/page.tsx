@@ -59,6 +59,9 @@ export default function TranscriptDetailPage() {
                 try {
                     const response = await axios.get(`${API_URL}/clips/transcripts/${id}`);
                     setTranscript(response.data);
+                    if (response.data.generatedClips) {
+                        setGeneratedClips(response.data.generatedClips);
+                    }
                 } catch (err) {
                     setError('Failed to fetch transcript details.');
                     console.error(err);
@@ -180,7 +183,14 @@ export default function TranscriptDetailPage() {
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div className="md:col-span-2">
-                        <video controls src={transcript.videoUrl} className="w-full rounded-lg shadow-lg"></video>
+                        {transcript && transcript.videoUrl && (
+                            <video 
+                                controls 
+                                src={`${API_URL}${transcript.videoUrl}`} 
+                                className="w-full rounded-lg shadow-lg"
+                            >
+                            </video>
+                        )}
                         <div className="mt-8">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-2xl font-bold">Clip Analysis & Generation</h3>
@@ -279,7 +289,7 @@ export default function TranscriptDetailPage() {
                                                     </div>
                                                     <video 
                                                         controls 
-                                                        src={generatedClips[index].url} 
+                                                        src={`${API_URL}${generatedClips[index].url}`} 
                                                         className="w-full rounded"
                                                         style={{maxHeight: '300px'}}
                                                     />
@@ -308,10 +318,13 @@ export default function TranscriptDetailPage() {
             </Card>
 
             {/* Caption Generator */}
-            {transcript && (
+            {transcript && transcript.videoUrl && (
                 <div className="grid gap-6">
-                    <CaptionGenerator transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
-                    <StreamerGameplayCrop transcriptId={transcript._id} videoUrl={transcript.videoUrl} />
+                    <CaptionGenerator 
+                        transcriptId={transcript._id} 
+                        videoUrl={`${API_URL}${transcript.videoUrl}`} 
+                    />
+                    <StreamerGameplayCrop transcriptId={transcript._id} videoUrl={`${API_URL}${transcript.videoUrl}`} />
                 </div>
             )}
 

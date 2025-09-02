@@ -2,15 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Transcript = require('../models/Transcript');
 const ffmpeg = require('fluent-ffmpeg');
-const { Storage } = require('@google-cloud/storage');
 const path = require('path');
 const fs = require('fs');
 
-// Initialize Google Cloud Storage
-const storage = new Storage({
-    keyFilename: process.env.GCP_SERVICE_ACCOUNT_PATH,
-});
-const bucket = storage.bucket(process.env.GCP_BUCKET_NAME);
 
 // Caption style presets for TikTok/Reels
 const CAPTION_STYLES = {
@@ -344,47 +338,7 @@ router.post('/generate/:id', async (req, res) => {
         const outputPath = path.join(tempDir, outputFileName);
 
         // Download original video
-        const inputPath = path.join(tempDir, `input_${Date.now()}.mp4`);
-        
-        // Extract blob path from URL (remove domain and query params)
-        console.log('Debug: Original video URL:', transcript.videoUrl);
-        
-        let blobPath;
-        const url = new URL(transcript.videoUrl);
-        
-        if (url.hostname === 'storage.googleapis.com') {
-            // Format: https://storage.googleapis.com/bucket-name/path/to/file
-            const pathParts = url.pathname.split('/').filter(part => part);
-            blobPath = pathParts.slice(1).join('/'); // Remove bucket name, keep path
-        } else {
-            // Fallback to original logic
-            const urlParts = transcript.videoUrl.split('/');
-            const bucketIndex = urlParts.findIndex(part => part === process.env.GCP_BUCKET_NAME || part === 'vinci-dev');
-            blobPath = urlParts.slice(bucketIndex + 1).join('/').split('?')[0];
-        }
-        
-        // Decode URL encoding
-        blobPath = decodeURIComponent(blobPath);
-        
-        console.log('Debug: Extracted blob path:', blobPath);
-        console.log('Debug: Using bucket:', process.env.GCP_BUCKET_NAME);
-        
-        const file = bucket.file(blobPath);
-        console.log('Debug: Checking if file exists...');
-        
-        // Check if file exists
-        try {
-            const [exists] = await file.exists();
-            if (!exists) {
-                throw new Error(`Video file not found in storage: ${blobPath}`);
-            }
-            
-            console.log('Debug: File exists, downloading...');
-            await file.download({ destination: inputPath });
-        } catch (storageError) {
-            console.error('Debug: Storage error:', storageError.message);
-            throw new Error(`Failed to access video file: ${storageError.message}`);
-        }
+        const inputPath = path.join(__dirname, '..', '..', 'uploads', path.basename(transcript.videoUrl));
 
         // Generate SRT subtitle file
         const captionStyle = CAPTION_STYLES[style];
@@ -430,25 +384,23 @@ router.post('/generate/:id', async (req, res) => {
                 .run();
         });
 
-        // Upload captioned video to Google Cloud Storage
-        const captionedBlobName = `captioned/${outputFileName}`;
-        await bucket.upload(outputPath, {
-            destination: captionedBlobName,
-            metadata: {
-                contentType: 'video/mp4',
-            },
-        });
+        const destDir = path.join(__dirname, '..', '..', 'uploads', 'captioned');
+        if (!fs.existsSync(destDir)) {
+            fs.mkdirSync(destDir, { recursive: true });
+        }
+        const destPath = path.join(destDir, outputFileName);
+        fs.renameSync(outputPath, destPath);
 
         // Clean up temporary files
-        try {
-            fs.unlinkSync(inputPath);
-            fs.unlinkSync(outputPath);
-        } catch (cleanupError) {
-            console.warn('Failed to clean up temporary files:', cleanupError.message);
-        }
+        // The input path is the original video, we shouldn't delete it
+        // try {
+        //     fs.unlinkSync(inputPath);
+        // } catch (cleanupError) {
+        //     console.warn('Failed to clean up temporary files:', cleanupError.message);
+        // }
 
         // Return success with download URL
-        const captionedVideoUrl = `https://storage.googleapis.com/${process.env.GCP_BUCKET_NAME}/${captionedBlobName}`;
+        const captionedVideoUrl = `/uploads/captioned/${outputFileName}`;
 
         res.json({
             success: true,
