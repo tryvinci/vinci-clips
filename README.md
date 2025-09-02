@@ -10,7 +10,7 @@
 Vinci Clips is an open-source platform that leverages artificial intelligence to analyze video content, generate accurate transcriptions, and automatically identify the most engaging segments for creating viral short-form content. The platform streamlines the content creation workflow for creators, marketers, and businesses looking to maximize their video content's reach across multiple social media platforms.
 
 Demo
-https://github.com/user-attachments/assets/cddfc8f3-b476-4548-adae-00482ba2436f
+<video src="https://github.com/user-attachments/assets/cddfc8f3-b476-4548-adae-00482ba2436f" controls loop></video>
 
 ## Key Features
 
