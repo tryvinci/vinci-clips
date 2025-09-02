@@ -47,6 +47,17 @@ cd backend
 cp .env.example .env
 ```
 
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Copy the example .env file
+cp env.example .env.local
+```
+
+
+
+
 Now, open the newly created `.env` file in a text editor and add your Gemini API key:
 
 ```env

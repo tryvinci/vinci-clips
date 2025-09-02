@@ -1,5 +1,4 @@
 const express = require('express');
-const { ObjectId } = require('mongodb');
 const Transcript = require('../models/Transcript');
 const { exec } = require('child_process');
 const fs = require('fs');
