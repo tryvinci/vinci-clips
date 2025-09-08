@@ -266,7 +266,7 @@ function StreamerGameplayCropComponent({ transcriptId, videoUrl, onRestart }: St
     setError(null);
     try {
       const progressInterval = setInterval(() => setProgress(prev => Math.min(prev + Math.random() * 8, 90)), 500);
-      const response = await axios.post(`${API_URL}/clips/reframe/streamer-gameplay`, {
+      const response = await axios.post(`${API_URL}/clips/streamer/streamer-gameplay`, {
         transcriptId,
         webcamArea,
         gameplayArea,

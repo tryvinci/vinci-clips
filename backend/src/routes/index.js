@@ -10,6 +10,7 @@ const fixStatusRoutes = require('./fix-status');
 const importRoutes = require('./import');
 const retryRoutes = require('./retry-transcription');
 const reframeRoutes = require('./reframe');
+const streamerRoutes = require('./streamer');
 
 
 // Mount specific routes. Order matters for wildcard routes.
@@ -20,6 +21,7 @@ router.use('/analyze', analyzeRoutes); // Specific route for analysis
 router.use('/clips', clipsRoutes); // Specific route for clips (if any sub-routes are defined in clips.js)
 router.use('/captions', captionsRoutes); // TikTok/Reels style caption generation
 router.use('/reframe', reframeRoutes); // AI-powered video reframing for social media
+router.use('/streamer', streamerRoutes); // Streamer & gameplay video processing
 router.use('/retry', retryRoutes); // Retry failed operations
 router.use('/admin', fixStatusRoutes); // Admin routes for fixing data issues
 
