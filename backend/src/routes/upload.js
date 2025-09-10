@@ -137,14 +137,12 @@ router.post('/file', upload.single('video'), async (req, res) => {
                 
                 await Promise.all(uploadPromises);
 
-                const [videoUrl] = await videoBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                const [mp3Url] = await mp3Blob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                
-                // Get thumbnail URL if it exists
+                // Construct public URLs
+                const videoUrl = `https://storage.googleapis.com/${bucket.name}/${videoBlob.name}`;
+                const mp3Url = `https://storage.googleapis.com/${bucket.name}/${mp3Blob.name}`;
                 let thumbnailUrl = null;
                 if (fs.existsSync(thumbnailPath)) {
-                    const [thumbUrl] = await thumbnailBlob.getSignedUrl({ action: 'read', expires: '03-09-2491' });
-                    thumbnailUrl = thumbUrl;
+                    thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailBlob.name}`;
                 }
 
                 // Update status to transcribing

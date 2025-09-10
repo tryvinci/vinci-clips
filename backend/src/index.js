@@ -52,6 +52,9 @@ app.use(logger.requestMiddleware);
 // Mount routes
 app.use('/api', mainRoutes);
 
+// Serve static files from the 'uploads' directory, making them accessible via URL
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 async function startServer() {
     try {
         await connectDB();

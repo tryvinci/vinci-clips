@@ -12,6 +12,7 @@ const fixStatusRoutes = require('./fix-status');
 const importRoutes = require('./import');
 const retryRoutes = require('./retry-transcription');
 const reframeRoutes = require('./reframe');
+const streamerRoutes = require('./streamer');
 
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
@@ -67,6 +68,7 @@ router.use('/analyze', authenticate, analyzeRoutes);
 router.use('/clips', authenticate, clipsRoutes);
 router.use('/captions', authenticate, captionsRoutes);
 router.use('/reframe', authenticate, reframeRoutes);
+router.use('/streamer', authenticate, streamerRoutes); // Streamer & gameplay video processing
 router.use('/retry', authenticate, retryRoutes);
 router.use('/admin', authenticate, fixStatusRoutes);
 

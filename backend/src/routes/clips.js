@@ -150,12 +150,11 @@ router.post('/generate/:transcriptId', async (req, res) => {
 
                 // Upload generated clip to cloud storage
                 const clipBlobName = `clips/${transcriptId}_clip_${actualIndex}.mp4`;
-                await bucket.upload(outputPath, { destination: clipBlobName });
+                const clipBlob = bucket.file(clipBlobName);
+                await clipBlob.save(fs.readFileSync(outputPath));
                 
-                const [clipUrl] = await bucket.file(clipBlobName).getSignedUrl({
-                    action: 'read',
-                    expires: '03-09-2491'
-                });
+                // Construct public URL
+                const clipUrl = `https://storage.googleapis.com/${bucket.name}/${clipBlobName}`;
 
                 generatedClips.push({
                     index: actualIndex,

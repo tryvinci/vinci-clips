@@ -56,23 +56,24 @@ async function processVideo(transcriptId, videoPath, originalFilename, userId, d
         const mp3BlobName = originalFilename.replace(/\.[^/.]+$/, ".mp3");
         const thumbnailBlobName = originalFilename.replace(/\.[^/.]+$/, "_thumbnail.jpg");
 
+        const videoBlob = bucket.file(videoBlobPath);
+        const mp3Blob = bucket.file(`${userPrefix}/audio/${mp3BlobName}`);
+        const thumbnailBlob = bucket.file(`${userPrefix}/thumbnails/${thumbnailBlobName}`);
+
         console.log(`[Processor] Uploading files to GCS...`);
-        const uploadPromises = [
-            bucket.upload(videoPath, { destination: videoBlobPath }),
-            bucket.upload(mp3Path, { destination: `${userPrefix}/audio/${mp3BlobName}` })
-        ];
-        if (fs.existsSync(thumbnailPath)) {
-            uploadPromises.push(bucket.upload(thumbnailPath, { destination: `${userPrefix}/thumbnails/${thumbnailBlobName}` }));
-        }
-        await Promise.all(uploadPromises);
+        await Promise.all([
+            videoBlob.save(fs.readFileSync(videoPath)),
+            mp3Blob.save(fs.readFileSync(mp3Path)),
+            fs.existsSync(thumbnailPath) ? thumbnailBlob.save(fs.readFileSync(thumbnailPath)) : Promise.resolve()
+        ]);
         console.log(`[Processor] GCS uploads complete`);
 
-        // 4. Get public URLs for all files
-        const [videoUrl] = await bucket.file(videoBlobPath).getSignedUrl({ action: 'read', expires: '03-09-2491' });
-        const [mp3Url] = await bucket.file(`${userPrefix}/audio/${mp3BlobName}`).getSignedUrl({ action: 'read', expires: '03-09-2491' });
+        // 4. Construct public URLs
+        const videoUrl = `https://storage.googleapis.com/${bucket.name}/${videoBlobPath}`;
+        const mp3Url = `https://storage.googleapis.com/${bucket.name}/${userPrefix}/audio/${mp3BlobName}`;
         let thumbnailUrl = null;
         if (fs.existsSync(thumbnailPath)) {
-            [thumbnailUrl] = await bucket.file(`${userPrefix}/thumbnails/${thumbnailBlobName}`).getSignedUrl({ action: 'read', expires: '03-09-2491' });
+            thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${userPrefix}/thumbnails/${thumbnailBlobName}`;
         }
 
         transcript.status = 'transcribing';

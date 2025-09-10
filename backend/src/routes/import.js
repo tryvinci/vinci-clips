@@ -22,6 +22,7 @@ async function initializeYTDlp() {
         const version = await ytDlp.execPromise(['--version']);
         console.log('[Auth] yt-dlp binary found:', version.trim());
 
+        /*
         console.log('[Auth] Initializing YouTube cookies for yt-dlp...');
         const secretName = 'projects/382403086889/secrets/youtube-cookies/versions/latest';
         
@@ -38,6 +39,7 @@ async function initializeYTDlp() {
         fs.writeFileSync(cookieFilePath, cookiesTxtContent);
         
         console.log(`[Auth] Successfully initialized YouTube cookies at: ${cookieFilePath}`);
+        */
     } catch (error) {
         console.error('[Auth] FATAL: Could not initialize yt-dlp or cookies.', error);
         process.exit(1); 
@@ -62,7 +64,7 @@ const validateUrl = (url) => {
 const extractYouTubeVideo = async (url) => {
     try {
         console.log(`[Import] Extracting video info for URL: ${url}`);
-        const videoInfo = await ytDlp.getVideoInfo(url, { cookies: cookieFilePath });
+        const videoInfo = await ytDlp.getVideoInfo(url);
         return {
             title: videoInfo.title,
             duration: videoInfo.duration,
@@ -80,7 +82,6 @@ const downloadYouTubeVideoToLocal = (url, outputPath) => {
         console.log(`[Import] Starting local download to ${outputPath}`);
         const ytDlpEventEmitter = ytDlp.exec([
             url,
-            '--cookies', cookieFilePath,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '-o', outputPath,
         ]);

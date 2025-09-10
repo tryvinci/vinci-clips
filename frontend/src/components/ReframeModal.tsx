@@ -48,6 +48,7 @@ interface ReframeModalProps {
   originalFilename: string;
   videoDimensions?: { width: number; height: number };
   generatedClipUrl?: string;
+  transcriptData?: any[]; // Pass transcript data for active speaker detection
 }
 
 // --- Constants & Helper Functions (with additions) ---
@@ -75,7 +76,7 @@ const getCaptionStyleCSS = (styleId: string): React.CSSProperties => {
 };
 
 const ReframeModal: React.FC<ReframeModalProps> = ({
-  isOpen, onClose, transcriptId, videoUrl, originalFilename, generatedClipUrl
+  isOpen, onClose, transcriptId, videoUrl, originalFilename, generatedClipUrl, transcriptData
 }) => {
   const { getToken } = useAuth(); // Instantiate useAuth
   // --- State Management (no major changes, `currentTab` removed) ---
@@ -103,6 +104,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   const [addCaptions, setAddCaptions] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
   const [endTime, setEndTime] = useState<number>(0);
+  const [activeSpeakerFace, setActiveSpeakerFace] = useState<any | null>(null);
   // NEW: State to manage the visibility of advanced settings
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
 
@@ -137,12 +139,21 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
   const handleDetectionComplete = async (detectionResults: any[]) => {
     setDetections(detectionResults);
     setError(null);
-    const limitedDetections = detectionResults.sort((a, b) => b.confidence - a.confidence).slice(0, 20);
+
+    // Simple active speaker detection: assume the first face is the speaker
+    if (detectionResults.length > 0) {
+        setActiveSpeakerFace(detectionResults[0].boundingBox);
+    }
+
     try {
       setIsAnalyzing(true);
       const token = await getToken();
       const response = await axios.post(`${API_URL}/api/reframe/analyze`, {
-        transcriptId, targetPlatform: selectedPlatform, detections: limitedDetections, generatedClipUrl
+        transcriptId, 
+        targetPlatform: selectedPlatform, 
+        detections: detectionResults, 
+        generatedClipUrl,
+        activeSpeakerFace
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -150,7 +161,8 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
         setCropParameters(response.data.analysis.cropParameters);
         setPreviewUrl(response.data.analysis.previewUrl);
       } else { setError('Failed to analyze video for reframing'); }
-    } catch (err: any) { setError(err.response?.data?.error || 'Failed to analyze video');
+    } catch (err: any) { 
+      setError(err.response?.data?.error || 'Failed to analyze video');
     } finally { setIsAnalyzing(false); }
   };
 
@@ -161,8 +173,14 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
       const progressInterval = setInterval(() => setGenerationProgress(prev => Math.min(prev + Math.random() * 10, 90)), 500);
       const token = await getToken();
       const response = await axios.post(`${API_URL}/api/reframe/generate`, {
-        transcriptId, targetPlatform: selectedPlatform, cropParameters, detections, outputName, generatedClipUrl,
-        captions: addCaptions ? { enabled: true, style: selectedCaptionStyle } : { enabled: false }
+        transcriptId, 
+        targetPlatform: selectedPlatform, 
+        cropParameters, 
+        detections, 
+        outputName, 
+        generatedClipUrl,
+        captions: addCaptions ? { enabled: true, style: selectedCaptionStyle } : { enabled: false },
+        activeSpeakerFace
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
