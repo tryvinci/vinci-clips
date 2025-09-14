@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const ffmpeg = require('fluent-ffmpeg');
 const { Storage } = require('@google-cloud/storage');
 const Transcript = require('../models/Transcript');
@@ -39,7 +40,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     }
     
     // Create temporary directories
-    const tempDir = path.join(__dirname, '..', '..', 'uploads', 'temp');
+    const tempDir = path.join(os.tmpdir(), 'vinci-clips-temp');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
