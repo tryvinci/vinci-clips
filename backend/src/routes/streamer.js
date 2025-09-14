@@ -49,7 +49,8 @@ router.post('/streamer-gameplay', async (req, res) => {
     
     // --- Download remote video ---
     // This is now the only path for getting the source video
-    localSourceVideoPath = path.join(tempDir, `source_${timestamp}_${path.basename(transcript.videoUrl)}`);
+    const videoUrl = new URL(transcript.videoUrl);
+    localSourceVideoPath = path.join(tempDir, `source_${timestamp}_${path.basename(videoUrl.pathname)}`);
     logger.info(`Downloading remote video from ${transcript.videoUrl} to ${localSourceVideoPath}`);
     const writer = fs.createWriteStream(localSourceVideoPath);
     const response = await axios({ url: transcript.videoUrl, method: 'GET', responseType: 'stream' });
