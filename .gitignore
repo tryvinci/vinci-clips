@@ -30,3 +30,4 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw? 
+caption-renderer.md

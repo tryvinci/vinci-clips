@@ -48,22 +48,52 @@ The central data model is the `Transcript`.
 
 ---
 
-## 3. Core Processing Pipeline (`videoProcessor.js`)
+## 3. upload.js is a Node.js module that uses the Express framework to handle video uploads. Here's a breakdown of its functionality:
 
-A significant refactoring effort led to the creation of a centralized utility, `backend/src/utils/videoProcessor.js`. This module contains the entire, shared pipeline for processing a video file after it has been downloaded or uploaded to the server. Both the `/upload` and `/import` routes now delegate to this processor, ensuring consistent and reliable behavior.
+  Key Technologies:
 
-The pipeline executes the following steps asynchronously:
+   * Express.js: A web framework for Node.js, used to define the API routes.
+   * Multer: Middleware for handling multipart/form-data, which is primarily used for uploading files.
+   * @google-cloud/storage: Google Cloud Storage client library for uploading files to a GCS bucket.
+   * @google/generative-ai: Google's Generative AI SDK for interacting with the Gemini API for transcription.
+   * ffmpeg: A command-line tool for handling multimedia files. It's used here to extract audio and generate thumbnails.
+   * Mongoose: An ODM (Object Data Modeling) library for MongoDB, used to interact with the Transcript model.
 
-1.  **Status Update (`converting`):** The corresponding `Transcript` document in MongoDB is immediately updated to a status of `converting`.
-2.  **Thumbnail Generation:** `ffmpeg` is executed to extract the first frame of the video into a JPEG thumbnail.
-3.  **Audio Extraction:** `ffmpeg` is executed again to strip the video track and convert the audio into an MP3 file.
-4.  **Cloud Storage Upload:** The original video file, the generated thumbnail, and the new MP3 audio file are all uploaded in parallel to a user-specific folder in the Google Cloud Storage (GCS) bucket (e.g., `users/USER_ID/...`).
-5.  **Status Update (`transcribing`):** The `Transcript` status is updated to `transcribing`.
-6.  **Gemini File Upload:** The local MP3 file is uploaded to the Gemini File API, which prepares it for AI processing.
-7.  **Gemini Transcription:** A detailed prompt is sent to the Gemini generative model. This prompt specifically requests a JSON output containing a word-by-word transcript with precise start/end timestamps and speaker identification for each word.
-8.  **Final Database Update (`completed`):** The `Transcript` record is updated a final time with the completed JSON transcript, the public URLs for the video/audio/thumbnail in GCS, the video duration, and the status is changed to `completed`.
-9.  **Cleanup:** The temporary video, MP3, and thumbnail files are deleted from the local server filesystem.
-10. **Error Handling:** If any step in this pipeline fails, the `Transcript` status is set to `failed`, and the local files are still cleaned up.
+  Workflow:
+
+   1. Initialization: The module sets up an Express router, configures Multer for file uploads (with a 2GB limit), and initializes the
+      Google Cloud Storage client.
+
+   2. Server-Sent Events (SSE) Connection (`GET /`):
+       * A GET endpoint is defined to establish a Server-Sent Events (SSE) connection with the client.
+       * This is likely intended for sending real-time progress updates to the frontend, although the code doesn't currently send any
+         specific events.
+
+   3. File Upload and Processing (`POST /file`):
+       * This is the core of the module, handling the actual file upload and processing.
+       * Authentication: It first verifies that a userId is present in the request; otherwise, it returns an "Unauthorized" error.
+       * Database Record: A new Transcript record is immediately created in the database with a status of "uploading".
+       * Video Processing:
+           * The video's duration is extracted using ffprobe.
+           * The status is updated to "converting".
+           * ffmpeg is used to generate a thumbnail from the first frame of the video and to convert the video into an MP3 audio file.
+       * Cloud Storage: The original video, the MP3, and the thumbnail are uploaded to a Google Cloud Storage bucket.
+       * Transcription:
+           * The status is updated to "transcribing".
+           * The MP3 file is sent to the Google Gemini AI API for transcription. The API is specifically instructed to provide
+             word-level timestamps and speaker identification, returning the result in JSON format.
+       * Finalization:
+           * The transcript data, along with the URLs of the stored video, audio, and thumbnail, is saved to the database.
+           * The status is updated to "completed".
+           * The temporary local files are deleted.
+           * A success response containing the completed transcript is sent to the client.
+
+  Error Handling:
+
+   * The entire process is wrapped in try...catch blocks to handle potential errors.
+   * If any step fails (e.g., video conversion, cloud upload, or transcription), the transcript's status is updated to "failed" in the
+     database, and an appropriate error response is sent. The local files are also cleaned up on failure.
+
 
 ---
 

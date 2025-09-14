@@ -9,13 +9,26 @@ const Transcript = require('../models/Transcript');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require('@google/generative-ai/server');
 
+// In-memory store for SSE connections, mapping userId to response object
+const sseConnections = new Map();
+
+// Function to send SSE updates
+function sendSseUpdate(userId, data) {
+    const res = sseConnections.get(userId);
+    if (res) {
+        res.write(`data: ${JSON.stringify(data)}
+
+`);
+    }
+}
+
 // The application will now use Application Default Credentials (ADC) in all environments.
 // For local development, authenticate by running `gcloud auth application-default login`.
 // In Cloud Run, the attached service account's identity is used automatically.
 
 const storage = new Storage();
 const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
-const upload = multer({ 
+const upload = multer({
     dest: 'uploads/',
     limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB limit
 });
@@ -27,17 +40,23 @@ if (!fs.existsSync('uploads')) {
 
 // Handler for establishing the SSE connection
 router.get('/', (req, res) => {
+    const userId = req.auth.userId;
+    if (!userId) {
+        // This will be handled by the auth middleware, but as a safeguard:
+        return res.status(401).json({ error: 'Unauthorized: User ID is missing.' });
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
-    console.log('SSE connection established');
+    console.log(`SSE connection established for user ${userId}`);
 
-    // Keep the connection open but don't do anything else
-    // The client will send the upload request to the POST endpoint
-    
+    sseConnections.set(userId, res);
+
     req.on('close', () => {
-        console.log('SSE connection closed');
+        console.log(`SSE connection closed for user ${userId}`);
+        sseConnections.delete(userId);
         res.end();
     });
 });
@@ -52,7 +71,6 @@ router.post('/file', upload.single('video'), async (req, res) => {
     const videoPath = req.file.path;
     const mp3Path = `${videoPath}.mp3`;
     const thumbnailPath = `${videoPath}_thumbnail.jpg`;
-    const jobId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
     // Create initial transcript record with uploading status
     let transcript = new Transcript({
@@ -64,7 +82,19 @@ router.post('/file', upload.single('video'), async (req, res) => {
     await transcript.save();
     
     console.log(`Created transcript record ${transcript._id} with status: uploading`);
+    sendSseUpdate(userId, { transcriptId: transcript._id, status: 'uploading' });
 
+    // Immediately respond to the client
+    res.status(202).json({
+        message: 'Upload received, processing started.',
+        transcriptId: transcript._id
+    });
+
+    // --- Start background processing ---
+    processVideoInBackground(videoPath, mp3Path, thumbnailPath, transcript, userId);
+});
+
+async function processVideoInBackground(videoPath, mp3Path, thumbnailPath, transcript, userId) {
     try {
         // Get video duration first
         const durationCmd = `ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${videoPath}"`;
@@ -85,6 +115,7 @@ router.post('/file', upload.single('video'), async (req, res) => {
         transcript.status = 'converting';
         await transcript.save();
         console.log(`Updated transcript ${transcript._id} status: converting`);
+        sendSseUpdate(userId, { transcriptId: transcript._id, status: 'converting' });
 
         // Generate thumbnail (first frame) and convert to MP3
         const thumbnailCmd = `ffmpeg -i "${videoPath}" -ss 00:00:01 -vframes 1 "${thumbnailPath}"`;
@@ -103,130 +134,138 @@ router.post('/file', upload.single('video'), async (req, res) => {
             console.warn(`Thumbnail generation failed: ${thumbnailError}`);
         }
 
-        exec(ffmpegCmd, async (error) => {
-            if (error) {
-                console.error(`ffmpeg error: ${error}`);
-                // Update status to failed
-                transcript.status = 'failed';
-                await transcript.save();
-                // Clean up local files even if ffmpeg fails
-                fs.unlink(videoPath, () => {});
-                fs.unlink(mp3Path, () => {});
-                fs.unlink(thumbnailPath, () => {});
-                return res.status(500).json({ error: 'Failed to convert video to MP3.' });
+        await new Promise((resolve, reject) => {
+            exec(ffmpegCmd, (error) => {
+                if (error) {
+                    console.error(`ffmpeg error: ${error}`);
+                    reject(error);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
+        // --- FFMPEG conversion finished, now upload and transcribe ---
+        try {
+            const videoBlobPath = `videos/${transcript.originalFilename}`;
+            const videoBlob = bucket.file(videoBlobPath);
+            const mp3BlobName = transcript.originalFilename.replace(/\.mp4$/, ".mp3");
+            const mp3Blob = bucket.file(`audio/${mp3BlobName}`);
+            const thumbnailBlobName = transcript.originalFilename.replace(/\.\w+$/, "_thumbnail.jpg");
+            const thumbnailBlob = bucket.file(`thumbnails/${thumbnailBlobName}`);
+
+            // Upload video, audio, and thumbnail in parallel
+            const uploadPromises = [
+                bucket.upload(videoPath, { destination: videoBlob.name }),
+                bucket.upload(mp3Path, { destination: mp3Blob.name })
+            ];
+            
+            if (fs.existsSync(thumbnailPath)) {
+                uploadPromises.push(bucket.upload(thumbnailPath, { destination: thumbnailBlob.name }));
+            }
+            
+            await Promise.all(uploadPromises);
+
+            const videoUrl = `https://storage.googleapis.com/${bucket.name}/${videoBlob.name}`;
+            const mp3Url = `https://storage.googleapis.com/${bucket.name}/${mp3Blob.name}`;
+            let thumbnailUrl = null;
+            if (fs.existsSync(thumbnailPath)) {
+                thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailBlob.name}`;
             }
 
-            try {
-                const videoBlobPath = `videos/${req.file.originalname}`;
-                const videoBlob = bucket.file(videoBlobPath);
-                const mp3BlobName = req.file.originalname.replace(/\.mp4$/, ".mp3");
-                const mp3Blob = bucket.file(`audio/${mp3BlobName}`);
-                const thumbnailBlobName = req.file.originalname.replace(/\.\w+$/, "_thumbnail.jpg");
-                const thumbnailBlob = bucket.file(`thumbnails/${thumbnailBlobName}`);
+            // Update status to transcribing
+            transcript.status = 'transcribing';
+            await transcript.save();
+            console.log(`Updated transcript ${transcript._id} status: transcribing`);
+            sendSseUpdate(userId, { transcriptId: transcript._id, status: 'transcribing' });
+            
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
-                // Upload video, audio, and thumbnail in parallel
-                const uploadPromises = [
-                    bucket.upload(videoPath, { destination: videoBlob.name }),
-                    bucket.upload(mp3Path, { destination: mp3Blob.name })
-                ];
-                
-                // Only upload thumbnail if it exists
-                if (fs.existsSync(thumbnailPath)) {
-                    uploadPromises.push(bucket.upload(thumbnailPath, { destination: thumbnailBlob.name }));
-                }
-                
-                await Promise.all(uploadPromises);
+            const uploadResult = await fileManager.uploadFile(mp3Path, {
+                mimeType: 'audio/mpeg',
+                displayName: mp3BlobName
+            });
 
-                // Construct public URLs
-                const videoUrl = `https://storage.googleapis.com/${bucket.name}/${videoBlob.name}`;
-                const mp3Url = `https://storage.googleapis.com/${bucket.name}/${mp3Blob.name}`;
-                let thumbnailUrl = null;
-                if (fs.existsSync(thumbnailPath)) {
-                    thumbnailUrl = `https://storage.googleapis.com/${bucket.name}/${thumbnailBlob.name}`;
-                }
+            const model = genAI.getGenerativeModel({
+                model: process.env.LLM_MODEL || 'gemini-1.5-flash',
+            });
+            
+            const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
 
-                // Update status to transcribing
-                transcript.status = 'transcribing';
-                await transcript.save();
-                console.log(`Updated transcript ${transcript._id} status: transcribing`);
-                
-                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-                const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+            const prompt = "Transcribe the provided audio with word-level timestamps and identify the speaker for each word. Format the output as a JSON array of objects, where each object represents a single word with precise millisecond timing. Each object should have 'start' (in format MM:SS:mmm), 'end' (in format MM:SS:mmm), 'text' (single word), and 'speaker' fields. For example: [{'start': '00:00:000', 'end': '00:00:450', 'text': 'Hello', 'speaker': 'Speaker 1'}, {'start': '00:00:450', 'end': '00:00:890', 'text': 'world', 'speaker': 'Speaker 1'}]";
 
-                // Upload the local MP3 file directly to Gemini File API
-                const uploadResult = await fileManager.uploadFile(mp3Path, {
-                    mimeType: 'audio/mpeg',
-                    displayName: mp3BlobName
-                });
-
-                const model = genAI.getGenerativeModel({
-                    model: process.env.LLM_MODEL || 'gemini-1.5-flash',
-                });
-                
-                const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
-
-                const prompt = "Transcribe the provided audio with word-level timestamps and identify the speaker for each word. Format the output as a JSON array of objects, where each object represents a single word with precise millisecond timing. Each object should have 'start' (in format MM:SS:mmm), 'end' (in format MM:SS:mmm), 'text' (single word), and 'speaker' fields. For example: [{'start': '00:00:000', 'end': '00:00:450', 'text': 'Hello', 'speaker': 'Speaker 1'}, {'start': '00:00:450', 'end': '00:00:890', 'text': 'world', 'speaker': 'Speaker 1'}]";
-
-                const result = await model.generateContent({
-                    contents: [{
-                        role: 'user',
-                        parts: [
-                            { text: prompt },
-                            audioPart,
-                        ],
-                    }],
-                    generationConfig: {
-                        responseMimeType: 'application/json',
-                        responseSchema: {
-                            type: 'ARRAY',
-                            items: {
-                                type: 'OBJECT',
-                                properties: {
-                                    start: { type: 'STRING' },
-                                    end: { type: 'STRING' },
-                                    text: { type: 'STRING' },
-                                    speaker: { type: 'STRING' },
-                                },
-                                required: ['start', 'end', 'text', 'speaker']
-                                
+            const result = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { text: prompt },
+                        audioPart,
+                    ],
+                }],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    responseSchema: {
+                        type: 'ARRAY',
+                        items: {
+                            type: 'OBJECT',
+                            properties: {
+                                start: { type: 'STRING' },
+                                end: { type: 'STRING' },
+                                text: { type: 'STRING' },
+                                speaker: { type: 'STRING' },
                             },
+                            required: ['start', 'end', 'text', 'speaker']
                         },
                     },
-                });
+                },
+            });
 
-                const response = await result.response;
-                const transcriptContent = JSON.parse(response.text());
-                
-                // Update existing transcript with all data and mark as completed
-                transcript.transcript = transcriptContent;
-                transcript.videoUrl = videoUrl;
-                transcript.videoCloudPath = videoBlobPath;
-                transcript.mp3Url = mp3Url;
-                transcript.duration = videoDuration;
-                transcript.thumbnailUrl = thumbnailUrl;
-                transcript.status = 'completed';
-                await transcript.save();
-                console.log(`Transcript ${transcript._id} completed successfully`);
+            const response = await result.response;
+            const transcriptContent = JSON.parse(response.text());
+            
+            transcript.transcript = transcriptContent;
+            transcript.videoUrl = videoUrl;
+            transcript.videoCloudPath = videoBlobPath;
+            transcript.mp3Url = mp3Url;
+            transcript.duration = videoDuration;
+            transcript.thumbnailUrl = thumbnailUrl;
+            transcript.status = 'completed';
+            await transcript.save();
+            console.log(`Transcript ${transcript._id} completed successfully`);
+            sendSseUpdate(userId, { transcriptId: transcript._id, status: 'completed', transcript: transcript });
 
-                // Cleanup local files
-                fs.unlink(videoPath, () => {});
-                fs.unlink(mp3Path, () => {});
+        } catch (apiError) {
+            console.error(`Gemini API or upload error: ${apiError}`);
+            transcript.status = 'failed';
+            await transcript.save();
+            sendSseUpdate(userId, { transcriptId: transcript._id, status: 'failed', error: 'Failed to transcribe audio or upload files.' });
+        } finally {
+            // Cleanup local files
+            fs.unlink(videoPath, () => {});
+            fs.unlink(mp3Path, () => {});
+            if (fs.existsSync(thumbnailPath)) {
                 fs.unlink(thumbnailPath, () => {});
-
-                res.status(200).json({ status: 'Transcription complete.', transcript: transcript });
-
-            } catch (apiError) {
-                console.error(`Gemini API or upload error: ${apiError}`);
-                // Cleanup local files even if API fails
-                fs.unlink(videoPath, () => {});
-                fs.unlink(mp3Path, () => {});
-                res.status(500).json({ error: 'Failed to transcribe audio or upload files.' });
             }
-        });
+        }
     } catch (err) {
-        console.error(`Server error: ${err}`);
-        res.status(500).json({ error: 'An unexpected server error occurred.' });
+        console.error(`Server error during background processing: ${err}`);
+        try {
+            transcript.status = 'failed';
+            await transcript.save();
+            sendSseUpdate(userId, { transcriptId: transcript._id, status: 'failed', error: 'An unexpected server error occurred.' });
+        } catch (dbError) {
+            console.error(`Failed to update transcript status to failed: ${dbError}`);
+        } finally {
+            // Cleanup local files
+            fs.unlink(videoPath, () => {});
+            fs.unlink(mp3Path, () => {});
+            if (fs.existsSync(thumbnailPath)) {
+                fs.unlink(thumbnailPath, () => {});
+            }
+        }
     }
-});
+}
 
-module.exports = router; 
+module.exports = router;
+ 

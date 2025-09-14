@@ -5,6 +5,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const { Storage } = require('@google-cloud/storage');
 const Transcript = require('../models/Transcript');
 const logger = require('../utils/logger');
+const axios = require('axios');
 
 const router = express.Router();
 const storage = new Storage();
@@ -15,7 +16,7 @@ const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
  * POST /clips/streamer/streamer-gameplay
  */
 router.post('/streamer-gameplay', async (req, res) => {
-  let tempWebcamPath, tempGameplayPath, finalOutputPath; // For cleanup
+  let tempWebcamPath, tempGameplayPath, finalOutputPath, localSourceVideoPath; // For cleanup
   try {
     const { 
       transcriptId, 
@@ -33,8 +34,8 @@ router.post('/streamer-gameplay', async (req, res) => {
     }
     
     const transcript = await Transcript.findById(transcriptId);
-    if (!transcript) {
-      return res.status(404).json({ error: 'Transcript not found' });
+    if (!transcript || !transcript.videoUrl) {
+      return res.status(404).json({ error: 'Transcript or videoUrl not found' });
     }
     
     // Create temporary directories
@@ -43,9 +44,23 @@ router.post('/streamer-gameplay', async (req, res) => {
       fs.mkdirSync(tempDir, { recursive: true });
     }
     
-    // Create temporary file paths with fixed naming for debugging
     const timestamp = Date.now();
-    const sourceVideoPath = path.join(__dirname, '..', '..', 'uploads', path.basename(transcript.videoUrl));
+    
+    // --- Download remote video ---
+    // This is now the only path for getting the source video
+    localSourceVideoPath = path.join(tempDir, `source_${timestamp}_${path.basename(transcript.videoUrl)}`);
+    logger.info(`Downloading remote video from ${transcript.videoUrl} to ${localSourceVideoPath}`);
+    const writer = fs.createWriteStream(localSourceVideoPath);
+    const response = await axios({ url: transcript.videoUrl, method: 'GET', responseType: 'stream' });
+    response.data.pipe(writer);
+    await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+    });
+    logger.info('Download complete.');
+    // ---
+
+    // Create temporary file paths
     tempWebcamPath = path.join(tempDir, `webcam_${timestamp}.mp4`);
     tempGameplayPath = path.join(tempDir, `gameplay_${timestamp}.mp4`);
     finalOutputPath = path.join(tempDir, `final_${timestamp}.mp4`);
@@ -53,12 +68,12 @@ router.post('/streamer-gameplay', async (req, res) => {
     
     logger.info('Starting streamer gameplay processing', { 
       transcriptId,
-      sourceVideoPath
+      sourceVideoPath: localSourceVideoPath
     });
     
     // Get video duration
     const videoDuration = await new Promise((resolve, reject) => {
-      ffmpeg.ffprobe(sourceVideoPath, (err, metadata) => {
+      ffmpeg.ffprobe(localSourceVideoPath, (err, metadata) => {
         if (err) return reject(err);
         const duration = metadata.format.duration || 0;
         resolve(duration);
@@ -70,7 +85,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     // Step 1: Extract webcam area
     logger.info('Extracting webcam area', { webcamArea });
     await new Promise((resolve, reject) => {
-      ffmpeg(sourceVideoPath)
+      ffmpeg(localSourceVideoPath)
         .outputOptions([
           '-c:v libx264',
           '-crf 23',
@@ -92,7 +107,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     // Step 2: Extract gameplay area
     logger.info('Extracting gameplay area', { gameplayArea });
     await new Promise((resolve, reject) => {
-      ffmpeg(sourceVideoPath)
+      ffmpeg(localSourceVideoPath)
         .outputOptions([
           '-c:v libx264',
           '-crf 23',
@@ -125,7 +140,7 @@ router.post('/streamer-gameplay', async (req, res) => {
         ffmpeg()
             .input(tempGameplayPath)
             .input(tempWebcamPath)
-            .input(sourceVideoPath) // for audio
+            .input(localSourceVideoPath) // for audio
             .complexFilter([
                 `[0:v]scale=${outputWidth}:-1[gameplay]`,
                 `[1:v]scale=${outputWidth}:${webcamHeight}[webcam]`,
@@ -170,6 +185,7 @@ router.post('/streamer-gameplay', async (req, res) => {
     });
   } finally {
     // Cleanup temporary files
+    if (localSourceVideoPath && fs.existsSync(localSourceVideoPath)) fs.unlinkSync(localSourceVideoPath);
     if (tempWebcamPath && fs.existsSync(tempWebcamPath)) fs.unlinkSync(tempWebcamPath);
     if (tempGameplayPath && fs.existsSync(tempGameplayPath)) fs.unlinkSync(tempGameplayPath);
     if (finalOutputPath && fs.existsSync(finalOutputPath)) fs.unlinkSync(finalOutputPath);
