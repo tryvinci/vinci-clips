@@ -8,7 +8,8 @@
 > AI-powered video clipping platform that automatically transforms long-form videos into engaging short clips optimized for social media platforms.
 
 Vinci Clips is an open-source platform that leverages artificial intelligence to analyze video content, generate accurate transcriptions, and automatically identify the most engaging segments for creating viral short-form content. The platform streamlines the content creation workflow for creators, marketers, and businesses looking to maximize their video content's reach across multiple social media platforms.
-
+### Watch the Demo Loom On Youtube
+[![Youtube Video](https://github.com/user-attachments/assets/67fafcd0-f0e7-4f29-9a67-b22672c4f6b4)](https://www.youtube.com/watch?v=j6Jo_rcyURE)
 ### Demo of one of the Features: Segregate Clips via AI
 <video src="https://github.com/user-attachments/assets/cddfc8f3-b476-4548-adae-00482ba2436f" controls loop></video>
 
