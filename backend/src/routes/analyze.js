@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Transcript = require('../models/Transcript');
-const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
+const llmService = require('../services/llmService');
 
 router.post('/:transcriptId', async (req, res) => {
     try {
@@ -13,97 +13,10 @@ router.post('/:transcriptId', async (req, res) => {
         // Join transcript segments into a single string for analysis by the LLM
         const fullTranscriptText = transcriptDoc.transcript.map(segment => segment.text).join(' ');
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({
-            model: process.env.LLM_MODEL || 'gemini-1.5-flash',
-        });
-
-        const videoDurationText = transcriptDoc.duration ? ` The video is ${Math.floor(transcriptDoc.duration / 60)}:${String(Math.floor(transcriptDoc.duration % 60)).padStart(2, '0')} long.` : '';
-        
         const maxTimeFormatted = Math.floor(transcriptDoc.duration / 60) + ':' + String(Math.floor(transcriptDoc.duration % 60)).padStart(2, '0');
         
-        const prompt = `Given the following transcript, propose 3-5 video clips that would make engaging short content.${videoDurationText}
-
-CRITICAL CONSTRAINTS:
-- Video duration is EXACTLY ${videoDurationText ? maxTimeFormatted : 'unknown'} - DO NOT suggest any timestamps beyond this
-- Each clip should be 30-90 seconds total duration
-- All timestamps must be in MM:SS format and within 0:00 to ${maxTimeFormatted}
-
-You can suggest two types of clips:
-
-1. SINGLE SEGMENT clips: One continuous segment from start time to end time
-2. MULTI-SEGMENT clips: Multiple segments that when combined tell a coherent story
-
-For single segments: provide 'start' and 'end' times in MM:SS format.
-For multi-segments: provide an array of segments in 'segments' field, each with 'start' and 'end' times.
-
-VALIDATION RULES:
-- Every timestamp must be ≤ ${maxTimeFormatted}
-- Total duration must be 30-90 seconds
-- Focus on complete thoughts or exchanges
-- Ensure segments make sense when combined
-
-Output format: JSON array where each object has:
-- 'title': descriptive title
-- For single segments: 'start' and 'end' fields  
-- For multi-segments: 'segments' array with objects containing 'start' and 'end'
-
-Transcript: ${fullTranscriptText}`;
-
-        const result = await model.generateContent({
-            contents: [{
-                role: 'user',
-                parts: [{ text: prompt }],
-            }],
-            generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: 'ARRAY',
-                    items: {
-                        type: 'OBJECT',
-                        properties: {
-                            title: { type: 'STRING' },
-                            start: { type: 'STRING' },
-                            end: { type: 'STRING' },
-                            segments: {
-                                type: 'ARRAY',
-                                items: {
-                                    type: 'OBJECT',
-                                    properties: {
-                                        start: { type: 'STRING' },
-                                        end: { type: 'STRING' },
-                                    },
-                                    required: ['start', 'end'],
-                                },
-                            },
-                        },
-                        required: ['title'],
-                        propertyOrdering: ['title', 'start', 'end', 'segments'],
-                    },
-                },
-            },
-            safetySettings: [
-                {
-                    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-                    threshold: HarmBlockThreshold.BLOCK_NONE,
-                },
-                {
-                    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                    threshold: HarmBlockThreshold.BLOCK_NONE,
-                },
-                {
-                    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                    threshold: HarmBlockThreshold.BLOCK_NONE,
-                },
-                {
-                    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                    threshold: HarmBlockThreshold.BLOCK_NONE,
-                },
-            ],
-        });
-
-        const response = await result.response;
-        const suggestedClips = JSON.parse(response.text());
+        // Use the LLM service for analysis
+        const suggestedClips = await llmService.analyzeTranscript(fullTranscriptText, transcriptDoc.duration, maxTimeFormatted);
         
         // Convert MM:SS time format to seconds for database storage
         const convertTimeToSeconds = (timeString) => {
