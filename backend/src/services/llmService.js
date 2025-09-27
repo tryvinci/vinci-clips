@@ -11,7 +11,7 @@ class LLMService {
         // Initialize Gemini (default/fallback)
         if (process.env.GEMINI_API_KEY) {
             this.geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-            this.geminiFileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+            // Don't initialize file manager here - create it when needed
         }
 
         // Initialize OpenAI-compatible clients
@@ -185,8 +185,11 @@ Transcript: ${transcriptText}`;
     }
 
     async transcribeWithGemini(audioFilePath, originalFilename) {
+        // Create file manager when needed
+        const geminiFileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+        
         // Upload the audio file to Gemini File API
-        const uploadResult = await this.geminiFileManager.uploadFile(audioFilePath, {
+        const uploadResult = await geminiFileManager.uploadFile(audioFilePath, {
             mimeType: 'audio/mpeg',
             displayName: originalFilename || 'audio.mp3'
         });
