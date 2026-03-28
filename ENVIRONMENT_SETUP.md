@@ -115,6 +115,12 @@ cp .env.example .env
 | `REDIS_HOST` | `redis` | `localhost` | Redis server host |
 | `GCP_SERVICE_ACCOUNT_PATH` | `./backend/gcp-service-account.json` | `./gcp-service-account.json` | Service account file path |
 
+### Frontend Configuration (Optional for Local)
+
+| Variable | Default Value | Description |
+|----------|---------------|-------------|
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | URL for the backend API |
+
 ### Required External Services
 
 These values are the same for both Docker and local development:
