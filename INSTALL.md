@@ -8,6 +8,10 @@ This guide provides instructions for setting up and running the Vinci Clips appl
 - **Node.js**: v18.0.0 or later
 - **npm**: v8.0.0 or later
 - **FFmpeg**: This is a critical dependency for all video and audio processing.
+  - **macOS**: `brew install ffmpeg`
+  - **Ubuntu/Debian**: `sudo apt update && sudo apt install ffmpeg`
+  - **Windows**: [Download from official site](https://ffmpeg.org/download.html) and add to PATH.
+  - **Verify**: Run `ffmpeg -version` to ensure it's properly installed.
 - **Git**: For cloning the repository.
 
 ### API Keys
