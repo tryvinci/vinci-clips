@@ -3,49 +3,40 @@ const Transcript = require('../models/Transcript');
 
 const router = express.Router();
 
+function isComplete(transcript) {
+    return (
+        Array.isArray(transcript.transcript) &&
+        transcript.transcript.length > 0 &&
+        transcript.videoUrl &&
+        transcript.mp3Url
+    );
+}
+
 // Fix transcript statuses that are stuck in processing
 router.post('/fix-statuses', async (req, res) => {
     try {
-        // Find all transcripts that have transcript data but are stuck in uploading status
-        const transcriptsToFix = await Transcript.find({
-            status: { $in: ['uploading', 'converting', 'transcribing'] },
-            transcript: { $exists: true, $not: { $size: 0 } },
-            videoUrl: { $exists: true, $ne: '' },
-            mp3Url: { $exists: true, $ne: '' }
-        });
+        const transcripts = await Transcript.find({});
+        let fixedWithStatus = 0;
+        let fixedWithoutStatus = 0;
 
-        console.log(`Found ${transcriptsToFix.length} transcripts to fix`);
+        for (const transcript of transcripts) {
+            if (!isComplete(transcript)) continue;
 
-        // Update them to completed status
-        const result = await Transcript.updateMany(
-            {
-                status: { $in: ['uploading', 'converting', 'transcribing'] },
-                transcript: { $exists: true, $not: { $size: 0 } },
-                videoUrl: { $exists: true, $ne: '' },
-                mp3Url: { $exists: true, $ne: '' }
-            },
-            { $set: { status: 'completed' } }
-        );
+            if (['uploading', 'converting', 'transcribing'].includes(transcript.status)) {
+                await Transcript.findByIdAndUpdate(transcript._id, { status: 'completed' });
+                fixedWithStatus++;
+            } else if (!transcript.status) {
+                await Transcript.findByIdAndUpdate(transcript._id, { status: 'completed' });
+                fixedWithoutStatus++;
+            }
+        }
 
-        // Also fix any records that don't have status at all but are complete
-        const resultNoStatus = await Transcript.updateMany(
-            {
-                status: { $exists: false },
-                transcript: { $exists: true, $not: { $size: 0 } },
-                videoUrl: { $exists: true, $ne: '' }
-            },
-            { $set: { status: 'completed' } }
-        );
-
-        const totalFixed = result.modifiedCount + resultNoStatus.modifiedCount;
-        
         res.status(200).json({
             message: 'Status fix completed successfully',
-            fixedWithStatus: result.modifiedCount,
-            fixedWithoutStatus: resultNoStatus.modifiedCount,
-            totalFixed: totalFixed
+            fixedWithStatus,
+            fixedWithoutStatus,
+            totalFixed: fixedWithStatus + fixedWithoutStatus,
         });
-
     } catch (error) {
         console.error('Error fixing transcript statuses:', error);
         res.status(500).json({ error: 'Failed to fix transcript statuses' });

@@ -8,15 +8,14 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
-import { 
-  Smartphone, 
-  Square, 
-  Monitor, 
-  Download, 
-  Loader2, 
-  Wand2, 
-  Settings, 
+import {
+  Smartphone,
+  Square,
+  Monitor,
+  Download,
+  Loader2,
+  Wand2,
+  Settings,
   Eye,
   AlertCircle,
   CheckCircle,
@@ -25,6 +24,9 @@ import {
 } from 'lucide-react';
 import SubjectDetection from './SubjectDetection';
 import axios from 'axios';
+import { getApiUrl } from '@/lib/api';
+
+const API_URL = getApiUrl();
 
 // --- Interfaces (no changes) ---
 interface Platform {
@@ -126,10 +128,8 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
     setDetections(detectionResults);
     setError(null);
 
-    // Simple active speaker detection: assume the first face is the speaker
-    if (detectionResults.length > 0) {
-        setActiveSpeakerFace(detectionResults[0].boundingBox);
-    }
+    const speakerFace = detectionResults.length > 0 ? detectionResults[0].boundingBox : null;
+    setActiveSpeakerFace(speakerFace);
 
     try {
       setIsAnalyzing(true);
@@ -138,7 +138,7 @@ const ReframeModal: React.FC<ReframeModalProps> = ({
         targetPlatform: selectedPlatform, 
         detections: detectionResults, 
         generatedClipUrl,
-        activeSpeakerFace
+        activeSpeakerFace: speakerFace
       });
       if (response.data.success) {
         setCropParameters(response.data.analysis.cropParameters);

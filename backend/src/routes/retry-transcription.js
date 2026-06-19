@@ -1,23 +1,24 @@
 const express = require('express');
 const Transcript = require('../models/Transcript');
 const llmService = require('../services/llmService');
-const { Storage } = require('@google-cloud/storage');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../utils/logger');
 
 const router = express.Router();
-const storage = new Storage();
-const bucket = storage.bucket(process.env.GCP_BUCKET_NAME || 'vinci-dev');
+
+function resolveLocalUploadPath(urlPath) {
+    if (!urlPath) return null;
+    return path.join(__dirname, '..', '..', 'uploads', path.basename(urlPath));
+}
 
 // Retry transcription for a stuck transcript
 router.post('/retry/:transcriptId', async (req, res) => {
     const { transcriptId } = req.params;
 
     try {
-        // Validate transcript ID format
-        if (!transcriptId || !transcriptId.match(/^[0-9a-fA-F]{24}$/)) {
-            return res.status(400).json({ error: 'Invalid transcript ID format.' });
+        if (!transcriptId) {
+            return res.status(400).json({ error: 'Transcript ID is required.' });
         }
 
         const transcript = await Transcript.findById(transcriptId);
@@ -25,72 +26,45 @@ router.post('/retry/:transcriptId', async (req, res) => {
             return res.status(404).json({ error: 'Transcript not found.' });
         }
 
-        // Check if transcript is in a state that can be retried
         if (!['transcribing', 'failed'].includes(transcript.status)) {
-            return res.status(400).json({ 
-                error: `Cannot retry transcript with status: ${transcript.status}` 
+            return res.status(400).json({
+                error: `Cannot retry transcript with status: ${transcript.status}`,
             });
         }
 
         if (!transcript.mp3Url) {
-            return res.status(400).json({ 
-                error: 'No MP3 URL found. Video processing may have failed.' 
+            return res.status(400).json({
+                error: 'No MP3 URL found. Video processing may have failed.',
             });
+        }
+
+        const mp3Path = resolveLocalUploadPath(transcript.mp3Url);
+        if (!mp3Path || !fs.existsSync(mp3Path)) {
+            return res.status(404).json({ error: 'MP3 file not found on disk.' });
         }
 
         logger.logVideoProcessing(transcriptId, 'retrying', 'Starting transcription retry');
 
-        // Update status to transcribing
         transcript.status = 'transcribing';
         await transcript.save();
 
-        // Download MP3 from cloud storage to temp location
-        const tempMp3Path = path.join('uploads', `retry_${transcriptId}.mp3`);
-        const mp3CloudPath = transcript.mp3Url.split('/').pop().split('?')[0]; // Extract filename
-        const mp3BlobPath = `audio/${transcript.originalFilename.replace(/\.mp4$/, '.mp3')}`;
-        
-        console.log(`Downloading MP3 from: ${mp3BlobPath}`);
-        
-        try {
-            const mp3File = bucket.file(mp3BlobPath);
-            await mp3File.download({ destination: tempMp3Path });
-        } catch (downloadError) {
-            console.error('Failed to download MP3:', downloadError);
-            transcript.status = 'failed';
-            await transcript.save();
-            return res.status(500).json({ error: 'Failed to download MP3 for transcription' });
-        }
-
-        // Use LLM service for transcription
-        console.log('Starting transcription with LLM service...');
-        
         const transcriptContent = await llmService.transcribeAudio(
-            tempMp3Path, 
-            transcript.originalFilename.replace(/\.mp4$/, '.mp3')
+            mp3Path,
+            transcript.originalFilename.replace(/\.[^.]+$/, '.mp3')
         );
-        
-        console.log(`Transcription completed with ${transcriptContent.length} segments`);
 
-        // Update transcript with results
         transcript.transcript = transcriptContent;
         transcript.status = 'completed';
         await transcript.save();
 
-        // Cleanup temp file
-        fs.unlink(tempMp3Path, () => {});
-
-        console.log(`Transcription retry successful for ${transcriptId}`);
-
         res.status(200).json({
             message: 'Transcription retry completed successfully',
-            transcript: transcript,
-            segmentCount: transcriptContent.length
+            transcript,
+            segmentCount: transcriptContent.length,
         });
-
     } catch (error) {
         console.error(`Transcription retry failed for ${transcriptId}:`, error);
-        
-        // Update transcript status to failed
+
         try {
             const transcript = await Transcript.findById(transcriptId);
             if (transcript) {
@@ -101,9 +75,9 @@ router.post('/retry/:transcriptId', async (req, res) => {
             console.error('Failed to update transcript status:', updateError);
         }
 
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Transcription retry failed',
-            details: error.message 
+            details: error.message,
         });
     }
 });

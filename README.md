@@ -3,7 +3,6 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15.3.5-black)](https://nextjs.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green)](https://mongodb.com/)
 
 > AI-powered video clipping platform that automatically transforms long-form videos into engaging short clips optimized for social media platforms.
 
@@ -62,10 +61,10 @@ Vinci Clips is an open-source platform that leverages artificial intelligence to
 
 **Technology Stack:**
 - **Frontend**: Next.js 15, React, TypeScript, Tailwind CSS, Shadcn/ui
-- **Backend**: Node.js, Express.js, MongoDB with Mongoose
-- **AI/ML**: Google Gemini API for transcription and analysis
-- **Media Processing**: FFmpeg for video/audio conversion and manipulation
-- **Cloud Storage**: Google Cloud Storage with signed URL access
+- **Backend**: Node.js, Express.js, JSON file database (`backend/storage/db.json`)
+- **AI/ML**: Google Gemini API (default) with optional OpenAI-compatible providers — see [LLM_PROVIDERS.md](LLM_PROVIDERS.md)
+- **Media Processing**: FFmpeg for video/audio conversion and caption burning
+- **Storage**: Local filesystem (`backend/uploads/`)
 - **Infrastructure**: Docker-ready with environment-based configuration
 
 ## Getting Started
@@ -76,10 +75,9 @@ Before running Vinci Clips, ensure you have the following installed:
 
 - **Node.js** (version 18.0.0 or higher)
 - **FFmpeg** (installed and available in your system PATH)
-- **MongoDB** (local installation or cloud instance)
 
-Additionally, you'll and API keys for:
-- **Google Gemini API** (for AI transcription services)
+Additionally, you'll need API keys for:
+- **Google Gemini API** (required for transcription; also used for analysis by default)
 
 ### Installation
 
@@ -105,14 +103,20 @@ Additionally, you'll and API keys for:
    
    Edit `backend/.env` with your actual values:
    ```env
-   # Server Configuration
    PORT=8080
-   
-   # AI Services
    GEMINI_API_KEY=your-gemini-api-key
    ```
+
+   Configure the frontend:
+   ```bash
+   cd frontend
+   cp env.example .env.local
+   ```
+   ```env
+   NEXT_PUBLIC_API_URL=http://localhost:8080
+   ```
    
-   **Note**: For Docker deployment, see `docker-setup.md` for different environment configuration.
+   **Note**: For Docker deployment, copy the root `.env.example` to `.env` and see `docker-setup.md`.
 
 
 4. **Start the application (install concurrently)**
@@ -136,35 +140,32 @@ Additionally, you'll and API keys for:
 1. **Upload Video**: Drag and drop a video file (up to 2GB) onto the upload interface
 2. **Processing**: The system automatically:
    - Converts video to audio format
-   - Uploads files to cloud storage
+   - Stores files locally in `backend/uploads/`
    - Generates video thumbnails
    - Creates AI-powered transcription with speaker identification
 3. **Review Transcript**: View the generated transcript with timestamp alignment
 4. **Generate Clips**: Use AI-suggested segments or manually select time ranges for clip creation
-5. **Download Results**: Access generated clips from cloud storage with direct download links
+5. **Download Results**: Access generated clips from the transcript detail page
 
 ### API Usage
 
-The platform provides a RESTful API for programmatic access:
+All endpoints are prefixed with `/clips`. Example:
 
 ```javascript
 // Upload a video
-POST /api/upload
+POST /clips/upload/file
 Content-Type: multipart/form-data
 
-// Get transcript status
-GET /api/transcripts/:id
+// Get transcript
+GET /clips/transcripts/:id
 
 // Generate clip
-POST /api/clips/generate
-{
-  "transcriptId": "...",
-  "startTime": 30,
-  "endTime": 90
-}
-```
+POST /clips/clips/generate/:transcriptId
+{ "clipIndex": 0 }
 
-For detailed API documentation, see [API Reference](docs/api.md).
+// Health check
+GET /clips/health
+```
 
 ## Development
 
@@ -174,20 +175,23 @@ For detailed API documentation, see [API Reference](docs/api.md).
 vinci-clips/
 ├── backend/                 # Express.js API server
 │   ├── src/
-│   │   ├── models/         # MongoDB schemas
-│   │   ├── routes/         # API endpoints
+│   │   ├── localdb.js      # JSON file database
+│   │   ├── models/         # Transcript model wrapper
+│   │   ├── routes/         # API endpoints (mounted at /clips)
+│   │   ├── services/       # LLM service
 │   │   └── index.js        # Server entry point
-|   └── storage/db.json     # All your data is stored here
-│   └── uploads             # All your videos are stored here
+│   ├── storage/db.json     # Transcript data (created at runtime)
+│   ├── uploads/            # Videos, clips, captioned output
 │   └── package.json
 ├── frontend/               # Next.js application
 │   ├── src/
 │   │   ├── app/           # App router pages
 │   │   ├── components/    # React components
-│   │   └── lib/           # Utility functions
+│   │   └── lib/           # Utilities (e.g. getApiUrl)
 │   └── package.json
-├── package.json           # Root package.json for scripts
-└── README.md
+├── .env.example           # Docker Compose environment template
+├── docker-compose.yml     # Local-first backend + frontend
+└── package.json           # Root scripts
 ```
 
 ### Development Commands
@@ -210,14 +214,11 @@ npm run lint           # Run ESLint checks
 ### Testing
 
 ```bash
-# Backend tests
+# Backend (no tests yet — exits with code 1 until tests are added)
 cd backend && npm test
 
-# Frontend tests
-cd frontend && npm test
-
-# End-to-end tests
-npm run test:e2e
+# Frontend lint
+cd frontend && npm run lint
 ```
 
 ## Deployment
@@ -225,11 +226,11 @@ npm run test:e2e
 ### Docker Deployment
 
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
+# Copy environment template and set GEMINI_API_KEY
+cp .env.example .env
 
-# Production deployment
-docker-compose -f docker-compose.prod.yml up -d
+# Build and run
+docker-compose up --build
 ```
 
 ### Environment Variables
@@ -240,6 +241,11 @@ For local deployment, ensure all environment variables are properly configured:
 |----------|-------------|----------|
 | `PORT` | Backend server port | No (default: 8080) |
 | `GEMINI_API_KEY` | Google Gemini API key | Yes |
+| `NEXT_PUBLIC_API_URL` | Frontend → backend URL | No (default: `http://localhost:8080`) |
+| `LLM_PROVIDER` | Primary LLM provider (`gemini` or `openai`) | No |
+| `OPENAI_API_KEY` | OpenAI API key (optional) | No |
+
+See [LLM_PROVIDERS.md](LLM_PROVIDERS.md) for multi-provider setup.
 
 ## Contributing
 
@@ -266,12 +272,12 @@ We welcome contributions to Vinci Clips! Please see our [Contributing Guidelines
 ### Core Platform (Completed)
 - Video upload with drag-and-drop interface (2GB limit)
 - FFmpeg-based video processing and thumbnail generation
-- Google Cloud Storage integration with signed URLs
+- Local file storage and JSON database persistence
 - AI transcription using Google Gemini API with speaker diarization
-- MongoDB data persistence with comprehensive status tracking
 - React/Next.js frontend with responsive design
-- Basic clip generation from transcript segments
-- Streamer's Webcam And Gameplay Video into a reel conversion
+- Clip generation from AI-suggested segments
+- Streamer's webcam + gameplay to reel conversion
+- OpenAI-compatible LLM providers (see LLM_PROVIDERS.md)
 
 ### Caption System (Recently Added)
 - TikTok/Reels style caption generation with 5 popular styles
@@ -311,7 +317,7 @@ The AGPL-3.0 license ensures that any modifications or derivatives of this softw
 
 - **GitHub Issues**: [Report bugs or request features](https://github.com/tryvinci/vinci-clips/issues)
 - **Discussions**: [Join community discussions](https://github.com/tryvinci/vinci-clips/discussions)
-- **Documentation**: [Read the full documentation](docs/)
+- **Documentation**: [INSTALL.md](INSTALL.md) and [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md)
 
 ### Commercial Support
 
@@ -322,7 +328,6 @@ For enterprise deployments, custom development, or commercial licensing options,
 - **Google Gemini API** for powerful AI transcription capabilities
 - **FFmpeg** for reliable video processing
 - **Next.js** and **Vercel** for excellent development experience
-- **MongoDB** for flexible data storage
 - **Open Source Community** for inspiration and contributions
 
 ---

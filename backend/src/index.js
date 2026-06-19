@@ -48,6 +48,11 @@ app.use(express.json());
 // Add request logging middleware
 app.use(logger.requestMiddleware);
 
+// Health check for Docker/load balancers (also available at /clips/health)
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Mount routes
 app.use('/clips', mainRoutes);
 

@@ -1,9 +1,11 @@
 # Backend Dockerfile for Vinci Clips
 FROM node:18-alpine
 
-# Install FFmpeg and other system dependencies
+# Install FFmpeg and fonts for caption rendering
 RUN apk add --no-cache \
     ffmpeg \
+    fontconfig \
+    ttf-dejavu \
     python3 \
     make \
     g++ \
@@ -22,7 +24,7 @@ RUN npm ci --only=production && npm cache clean --force
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p temp cache logs
+RUN mkdir -p temp cache logs uploads storage
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \

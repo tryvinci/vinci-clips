@@ -9,7 +9,9 @@ import ReframeModal from '@/components/ReframeModal';
 import CaptionGenerator from '@/components/CaptionGenerator';
 import { Wand2 } from 'lucide-react';
 import StreamerGameplayCrop from '@/components/StreamerGameplayCrop';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { getApiUrl } from '@/lib/api';
+
+const API_URL = getApiUrl();
 interface TranscriptSegment {
     start: string;
     end: string;
@@ -281,7 +283,7 @@ export default function TranscriptDetailPage() {
                                                                 Reframe
                                                             </Button>
                                                             <Button asChild size="sm" variant="outline">
-                                                                <a href={generatedClips[index].url} download target="_blank" rel="noopener noreferrer">
+                                                                <a href={`${API_URL}${generatedClips[index].url}`} download target="_blank" rel="noopener noreferrer">
                                                                     Download
                                                                 </a>
                                                             </Button>

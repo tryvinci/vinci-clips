@@ -61,9 +61,18 @@ cp env.example .env.local
 Now, open the newly created `.env` file in a text editor and add your Gemini API key:
 
 ```env
-# .env
+# backend/.env
+PORT=8080
 GEMINI_API_KEY=your-gemini-api-key-here
 ```
+
+The frontend `.env.local` should contain:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8080
+```
+
+This defaults to `http://localhost:8080` if omitted, but setting it explicitly is recommended.
 
 ### 4. Start the Application
 To run the app concurrently

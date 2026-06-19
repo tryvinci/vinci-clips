@@ -10,9 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Crop, Wand2, Download, Loader2, AlertCircle, CheckCircle, Info, RotateCcw } from 'lucide-react';
 import axios from 'axios';
+import { getApiUrl } from '@/lib/api';
 
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = getApiUrl();
 
 interface StreamerGameplayCropProps {
   transcriptId: string;
