@@ -4,6 +4,11 @@ const path = require('path');
 
 const router = express.Router();
 
+function resolveUploadPath(urlPath) {
+    if (!urlPath) return null;
+    return path.join(__dirname, '..', '..', 'uploads', path.basename(urlPath));
+}
+
 // Get all transcripts
 router.get('/', async (req, res) => {
     try {
@@ -82,23 +87,23 @@ router.delete('/:id', async (req, res) => {
             return res.status(404).json({ message: 'Transcript not found' });
         }
 
-        const fs = require('fs');
-        const path = require('path');
+        for (const urlPath of [transcript.videoUrl, transcript.mp3Url, transcript.thumbnailUrl]) {
+            const filePath = resolveUploadPath(urlPath);
+            if (filePath && fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
 
-        // Delete local files
-        if (transcript.videoUrl) {
-            const videoPath = path.join(__dirname, '..', '..', 'storage', transcript.videoUrl);
-            if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        const clipsDir = path.join(__dirname, '..', '..', 'uploads', 'clips');
+        if (fs.existsSync(clipsDir)) {
+            const clipPrefix = `${id}_clip_`;
+            for (const filename of fs.readdirSync(clipsDir)) {
+                if (filename.startsWith(clipPrefix)) {
+                    fs.unlinkSync(path.join(clipsDir, filename));
+                }
+            }
         }
-        if (transcript.mp3Url) {
-            const mp3Path = path.join(__dirname, '..', '..', 'storage', transcript.mp3Url);
-            if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
-        }
-        if (transcript.thumbnailUrl) {
-            const thumbnailPath = path.join(__dirname, '..', '..', 'storage', transcript.thumbnailUrl);
-            if (fs.existsSync(thumbnailPath)) fs.unlinkSync(thumbnailPath);
-        }
-        
+
         // Delete the transcript from the database
         await Transcript.findByIdAndDelete(id);
         

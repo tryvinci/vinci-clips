@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Download, Wand2, Video, Eye, Play } from 'lucide-react';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { getApiUrl } from '@/lib/api';
+
+const API_URL = getApiUrl();
 interface CaptionStyle {
     id: string;
     name: string;

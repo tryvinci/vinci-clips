@@ -11,9 +11,12 @@ const importRoutes = require('./import');
 const retryRoutes = require('./retry-transcription');
 const reframeRoutes = require('./reframe');
 const streamerRoutes = require('./streamer');
+const llmInfoRoutes = require('./llm-info');
+const healthRoutes = require('./health');
 
 
 // Mount specific routes. Order matters for wildcard routes.
+router.use('/health', healthRoutes);
 router.use('/upload', uploadRoutes); // Specific route for uploads
 router.use('/import', importRoutes); // Specific route for URL imports
 router.use('/transcripts', transcriptsRoutes); // Specific route for all transcripts and individual transcript by ID
@@ -24,5 +27,6 @@ router.use('/reframe', reframeRoutes); // AI-powered video reframing for social 
 router.use('/streamer', streamerRoutes); // Streamer & gameplay video processing
 router.use('/retry', retryRoutes); // Retry failed operations
 router.use('/admin', fixStatusRoutes); // Admin routes for fixing data issues
+router.use('/llm', llmInfoRoutes); // LLM provider information and configuration
 
 module.exports = router; 

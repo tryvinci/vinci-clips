@@ -1,207 +1,88 @@
 # Environment Variables Setup Guide
 
-This document clarifies the different environment files used in Vinci Clips and when to use each one.
+Vinci Clips uses a **local-first** architecture: JSON file database, local file storage, and no required MongoDB/GCS setup.
 
-## Overview
-
-Vinci Clips uses different environment configurations depending on how you run the application:
+## Environment Files
 
 ```
 vinci-clips/
-├── .env.example              # For Docker Compose deployment (project root)
-├── backend/.env.example      # For local backend development
+├── .env.example              # Docker Compose (project root)
+├── backend/.env.example      # Local backend development
+├── frontend/env.example      # Local frontend development
 └── ENVIRONMENT_SETUP.md      # This guide
 ```
 
-## Environment File Locations
+## Option 1: Local Development (Recommended)
 
-### 1. Project Root: `.env` (Docker Compose)
-
-**Location**: `/vinci-clips/.env`
-**Used by**: Docker Compose (`docker-compose.yml` and `docker-compose.prod.yml`)
-**Purpose**: Configure containerized services
+### Backend
 
 ```bash
-# Copy template and configure
-cp .env.example .env
-```
-
-**Key characteristics**:
-- Database URL points to Docker container: `mongodb://admin:password123@mongodb:27017/vinci-clips`
-- Redis host points to Docker container: `redis`
-- Service account path relative to project root: `./backend/gcp-service-account.json`
-
-### 2. Backend Folder: `backend/.env` (Local Development)
-
-**Location**: `/vinci-clips/backend/.env`
-**Used by**: Direct Node.js execution (`npm run dev`, `npm start`)
-**Purpose**: Configure backend when running outside Docker
-
-```bash
-# Copy template and configure
 cd backend
 cp .env.example .env
 ```
 
-**Key characteristics**:
-- Database URL points to local MongoDB: `mongodb://localhost:27017/vinci-clips`
-- Redis host points to localhost: `localhost`
-- Service account path relative to backend folder: `./gcp-service-account.json`
+Required in `backend/.env`:
 
-## Setup Instructions
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | Google Gemini API key (required for transcription) |
+| `PORT` | Server port (default: 8080) |
+| `LLM_PROVIDER` | `gemini` (default) or `openai` |
+| `LLM_MODEL` | Model name (default: `gemini-2.5-flash`) |
+| `OPENAI_API_KEY` | Optional — for OpenAI-compatible analysis |
 
-### Option 1: Docker Development (Recommended)
+See [LLM_PROVIDERS.md](LLM_PROVIDERS.md) for multi-provider setup.
 
-1. **Configure project root environment**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your actual values
-   ```
+### Frontend
 
-2. **Place GCP service account file**:
-   ```bash
-   # Put your service account JSON in the backend folder
-   cp /path/to/your/service-account.json backend/gcp-service-account.json
-   ```
-
-3. **Start with Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
-
-### Option 2: Local Development (Manual Setup)
-
-1. **Set up local services**:
-   ```bash
-   # Install and start MongoDB locally
-   brew install mongodb-community
-   brew services start mongodb-community
-   
-   # Install and start Redis (optional)
-   brew install redis
-   brew services start redis
-   ```
-
-2. **Configure backend environment**:
-   ```bash
-   cd backend
-   cp .env.example .env
-   # Edit backend/.env with your actual values
-   ```
-
-3. **Place GCP service account file**:
-   ```bash
-   # Put your service account JSON in the backend folder
-   cp /path/to/your/service-account.json backend/gcp-service-account.json
-   ```
-
-4. **Start services manually**:
-   ```bash
-   # Terminal 1: Start backend
-   cd backend && npm run dev
-   
-   # Terminal 2: Start frontend
-   cd frontend && npm run dev
-   ```
-
-## Environment Variables Reference
-
-### Backend Configuration
-
-| Variable | Docker Value | Local Value | Description |
-|----------|--------------|-------------|-------------|
-| `PORT` | `8080` | `8080` | Backend server port |
-| `DB_URL` | `mongodb://admin:password123@mongodb:27017/vinci-clips` | `mongodb://localhost:27017/vinci-clips` | MongoDB connection |
-| `REDIS_HOST` | `redis` | `localhost` | Redis server host |
-| `GCP_SERVICE_ACCOUNT_PATH` | `./backend/gcp-service-account.json` | `./gcp-service-account.json` | Service account file path |
-
-### Required External Services
-
-These values are the same for both Docker and local development:
-
-| Variable | Description | How to get |
-|----------|-------------|------------|
-| `GCP_BUCKET_NAME` | Google Cloud Storage bucket | Create in GCP Console |
-| `GEMINI_API_KEY` | Google Gemini API key | Get from Google AI Studio |
-
-## Common Issues
-
-### 1. Wrong Environment File Used
-
-**Symptom**: "Connection refused" or "File not found" errors
-
-**Solution**: Make sure you're using the right environment file:
-- Docker: Use project root `.env`
-- Local: Use `backend/.env`
-
-### 2. Service Account Path Issues
-
-**Symptom**: "Service account file not found"
-
-**Solutions**:
 ```bash
-# For Docker deployment
-ls -la backend/gcp-service-account.json
-
-# For local development  
-cd backend && ls -la gcp-service-account.json
+cd frontend
+cp env.example .env.local
 ```
 
-### 3. Database Connection Issues
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Backend URL (default: `http://localhost:8080`) |
 
-**Symptom**: "MongoDB connection failed"
+If unset, the frontend falls back to `http://localhost:8080` via `src/lib/api.ts`.
 
-**Solutions**:
+### Start
+
 ```bash
-# Docker: Check if MongoDB container is running
-docker-compose ps mongodb
-
-# Local: Check if MongoDB is installed and running
-brew services list | grep mongodb
+npm run install:all   # from project root
+npm start
 ```
 
-## Verification
+App: `http://localhost:3000/upload`
 
-### Docker Deployment
+## Option 2: Docker Compose
+
 ```bash
-# Check all services are running
-docker-compose ps
-
-# Test backend connection
-curl http://localhost:8080/health
-
-# Test frontend connection
-curl http://localhost:3000
+cp .env.example .env
+# Edit .env — set GEMINI_API_KEY at minimum
+docker-compose up --build
 ```
 
-### Local Development
-```bash
-# Test backend connection
-curl http://localhost:8080/health
+Docker runs **backend + frontend only**. Data persists in:
+- `./backend/uploads/` — videos, clips, captioned output
+- `./backend/storage/` — `db.json` transcript database
 
-# Test frontend connection  
-curl http://localhost:3000
+No MongoDB or Redis required.
 
-# Test database connection
-mongosh vinci-clips --eval "db.stats()"
-```
+## Health Checks
 
-## Migration Guide
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Backend root health (Docker) |
+| `GET /clips/health` | Backend API health |
+| `GET /api/health` | Frontend health (Docker) |
 
-### From Local to Docker
-1. Copy your `backend/.env` values to project root `.env`
-2. Update database and Redis hosts to use container names
-3. Ensure service account file is in `backend/` folder
+## Legacy / Unused Variables
 
-### From Docker to Local
-1. Copy your project root `.env` values to `backend/.env`
-2. Update database and Redis hosts to use localhost
-3. Install MongoDB and Redis locally
-4. Ensure service account file path is relative to backend folder
+These appear in older docs or `docker-compose.prod.yml` but are **not used** by the current local-first app:
 
-## Security Notes
+- `DB_URL`, `MONGO_*` — replaced by JSON file DB
+- `GCP_BUCKET_NAME`, `GCP_SERVICE_ACCOUNT_PATH` — replaced by local storage
+- `REDIS_*`, `JWT_SECRET`, `CLERK_*` — not wired in current codebase
 
-- Never commit `.env` files to version control
-- Keep service account JSON files secure and outside of version control
-- Use strong passwords for production MongoDB instances
-- Rotate API keys regularly in production environments
+Do not configure these unless you are running a custom cloud deployment.

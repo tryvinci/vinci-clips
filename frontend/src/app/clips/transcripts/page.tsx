@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Trash2 } from 'lucide-react';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { getApiUrl } from '@/lib/api';
+
+const API_URL = getApiUrl();
 interface Transcript {
     _id: string;
     originalFilename: string;

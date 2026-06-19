@@ -9,9 +9,9 @@ Vinci Clips is an AI-powered video clipping tool that automatically generates sh
 **Architecture:**
 - **Frontend:** Next.js application with React, TypeScript, and Tailwind CSS
 - **Backend:** Node.js/Express REST API server
-- **Database:** MongoDB with Mongoose ODM
-- **AI Services:** Google Gemini API for transcription and analysis
-- **Cloud Storage:** Google Cloud Storage for video/audio files
+- **Database:** JSON file database (`backend/src/localdb.js` → `backend/storage/db.json`)
+- **AI Services:** Google Gemini API (default) with optional OpenAI-compatible providers via `llmService.js`
+- **Storage:** Local filesystem (`backend/uploads/`)
 - **Video Processing:** FFmpeg for video-to-audio conversion and caption burning
 
 ## Development Commands
@@ -62,16 +62,17 @@ npm run lint
 
 ### Backend Structure
 - **Entry point:** `src/index.js` - Express server setup with CORS and route mounting
-- **Database:** `src/db.js` - MongoDB connection using Mongoose
+- **Database:** `src/localdb.js` - JSON file persistence in `storage/db.json`
 - **Routes:** `src/routes/` - Modular route handlers mounted under `/clips` prefix
   - `upload.js` - File upload and processing
   - `transcripts.js` - Transcript CRUD operations
   - `analyze.js` - AI analysis endpoints
-  - `clips.js` - Clip management
-  - `captions.js` - Caption generation and style management (planned)
-- **Models:** `src/models/` - Mongoose schemas (e.g., `Transcript.js`)
+  - `clips.js` - Clip generation
+  - `captions.js` - Caption generation and style presets
+  - `health.js` - Health check endpoint
+- **Models:** `src/models/Transcript.js` - Wrapper around localdb
+- **Services:** `src/services/llmService.js` - Unified LLM interface (Gemini + OpenAI-compatible)
 - **File Processing:** Uses `fluent-ffmpeg` for video-to-MP3 conversion and caption burning
-- **Cloud Integration:** Google Cloud Storage and Gemini API integration
 
 ### Frontend Structure
 - **App Router:** Uses Next.js 13+ app directory structure
@@ -86,9 +87,9 @@ npm run lint
 ### Core Workflow
 1. User uploads video via drag-and-drop interface
 2. Backend converts video to MP3 using FFmpeg
-3. Files uploaded to Google Cloud Storage in parallel
+3. Files saved to `backend/uploads/`
 4. Gemini API transcribes audio with word-level timestamps and speaker diarization
-5. Transcript data saved to MongoDB with precise timing
+5. Transcript data saved to JSON database with precise timing
 6. Frontend displays transcript with video playback
 7. **Caption Generation:** FFmpeg burns styled captions into video clips for social media
 
@@ -97,17 +98,22 @@ npm run lint
 ### Required Environment Variables (backend/.env)
 ```
 PORT=8080
-DB_URL=<mongodb-connection-string>
-GCP_BUCKET_NAME=<gcs-bucket-name>
-GCP_SERVICE_ACCOUNT_PATH=<path-to-service-account.json>
 GEMINI_API_KEY=<gemini-api-key>
+LLM_PROVIDER=gemini          # optional: gemini or openai
+LLM_MODEL=gemini-2.5-flash   # optional
+OPENAI_API_KEY=<optional>    # for OpenAI-compatible analysis
 ```
+
+Frontend (`frontend/.env.local`):
+```
+NEXT_PUBLIC_API_URL=http://localhost:8080
+```
+
+See `LLM_PROVIDERS.md` for multi-provider configuration.
 
 ### Prerequisites
 - Node.js v18+
 - FFmpeg in system PATH
-- Google Cloud Platform account with service account
-- MongoDB database
 - Gemini API key
 
 ## Development Guidelines
@@ -115,7 +121,7 @@ GEMINI_API_KEY=<gemini-api-key>
 ### File Path Conventions
 - Frontend imports use `@/` alias pointing to `frontend/src/`
 - All API endpoints prefixed with `/clips/`
-- Backend hardcoded to `http://localhost:8080` in frontend
+- Backend API URL configured via `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8080` in `src/lib/api.ts`)
 
 ### Code Style
 - ESLint with Next.js configuration for frontend

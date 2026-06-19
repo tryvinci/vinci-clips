@@ -8,7 +8,9 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { UploadCloud, Clock, CheckCircle, AlertCircle, Loader2, Link as LinkIcon, Globe, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { getApiUrl } from '@/lib/api';
+
+const API_URL = getApiUrl();
 
 
 interface Transcript {

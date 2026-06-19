@@ -6,12 +6,40 @@ const path = require('path');
 const fs = require('fs');
 
 
+const FONT_CANDIDATES = {
+    sans: [
+        { path: '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', name: 'DejaVu Sans' },
+        { path: '/System/Library/Fonts/Helvetica.ttc', name: 'Helvetica' },
+        { path: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', name: 'Liberation Sans' },
+    ],
+    mono: [
+        { path: '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf', name: 'DejaVu Sans Mono' },
+        { path: '/System/Library/Fonts/Courier.ttc', name: 'Courier' },
+    ],
+};
+
+function resolveFont(family = 'sans') {
+    for (const candidate of FONT_CANDIDATES[family] || FONT_CANDIDATES.sans) {
+        if (fs.existsSync(candidate.path)) {
+            return {
+                fontName: candidate.name,
+                fontsdir: path.dirname(candidate.path),
+            };
+        }
+    }
+    return { fontName: 'DejaVu Sans', fontsdir: null };
+}
+
+const sansFont = resolveFont('sans');
+const monoFont = resolveFont('mono');
+
 // Caption style presets for TikTok/Reels
 const CAPTION_STYLES = {
     'bold-center': {
         name: 'Bold Center',
         description: 'Heavy sans-serif, center-aligned, white text with black outline',
-        fontfile: '/System/Library/Fonts/Helvetica.ttc',
+        fontName: sansFont.fontName,
+        fontsdir: sansFont.fontsdir,
         fontsize: 48,
         fontcolor: 'white',
         borderw: 3,
@@ -22,7 +50,8 @@ const CAPTION_STYLES = {
     'neon-pop': {
         name: 'Neon Pop',
         description: 'Bright gradient colors, bold fonts, drop shadows',
-        fontfile: '/System/Library/Fonts/Helvetica.ttc',
+        fontName: sansFont.fontName,
+        fontsdir: sansFont.fontsdir,
         fontsize: 52,
         fontcolor: '#FF6B9D',
         borderw: 2,
@@ -34,7 +63,8 @@ const CAPTION_STYLES = {
     'typewriter': {
         name: 'Typewriter',
         description: 'Monospace fonts, word-by-word appearance',
-        fontfile: '/System/Library/Fonts/Courier.ttc',
+        fontName: monoFont.fontName,
+        fontsdir: monoFont.fontsdir,
         fontsize: 44,
         fontcolor: 'white',
         borderw: 2,
@@ -45,7 +75,8 @@ const CAPTION_STYLES = {
     'bubble': {
         name: 'Bubble Style',
         description: 'Rounded backgrounds, colorful overlays, soft shadows',
-        fontfile: '/System/Library/Fonts/Helvetica.ttc',
+        fontName: sansFont.fontName,
+        fontsdir: sansFont.fontsdir,
         fontsize: 46,
         fontcolor: 'white',
         borderw: 4,
@@ -59,7 +90,8 @@ const CAPTION_STYLES = {
     'minimal-clean': {
         name: 'Minimal Clean',
         description: 'Light fonts, subtle backgrounds, elegant spacing',
-        fontfile: '/System/Library/Fonts/Helvetica.ttc',
+        fontName: sansFont.fontName,
+        fontsdir: sansFont.fontsdir,
         fontsize: 42,
         fontcolor: 'white',
         borderw: 1,
@@ -203,7 +235,7 @@ function convertToSRTTime(timeStr) {
 function buildSubtitleStyleFilter(style) {
     // Create FFmpeg subtitle style filter
     const subtitleStyle = [
-        `FontName=${style.fontfile.replace('/System/Library/Fonts/', '').replace('.ttc', '')}`,
+        `FontName=${style.fontName || 'DejaVu Sans'}`,
         `FontSize=${style.fontsize}`,
         `PrimaryColour=${convertColorToASS(style.fontcolor)}`,
         `OutlineColour=${convertColorToASS(style.bordercolor)}`,
@@ -351,10 +383,11 @@ router.post('/generate/:id', async (req, res) => {
         console.log('Debug: Starting FFmpeg with subtitle file...');
         
         // Generate captioned video using FFmpeg with SRT subtitles
+        const fontsdirOpt = captionStyle.fontsdir ? `:fontsdir=${captionStyle.fontsdir}` : '';
         await new Promise((resolve, reject) => {
             ffmpeg(inputPath)
                 .outputOptions([
-                    `-vf subtitles=${srtPath}:force_style='FontName=Arial,FontSize=${captionStyle.fontsize},PrimaryColour=${convertColorToASS(captionStyle.fontcolor)},OutlineColour=${convertColorToASS(captionStyle.bordercolor)},Outline=${captionStyle.borderw},Alignment=2,MarginV=80'`,
+                    `-vf subtitles=${srtPath}${fontsdirOpt}:force_style='FontName=${captionStyle.fontName},FontSize=${captionStyle.fontsize},PrimaryColour=${convertColorToASS(captionStyle.fontcolor)},OutlineColour=${convertColorToASS(captionStyle.bordercolor)},Outline=${captionStyle.borderw},Alignment=2,MarginV=80'`,
                     '-c:v libx264',
                     '-c:a aac',
                     '-crf 23',

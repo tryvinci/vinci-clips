@@ -5,8 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const Transcript = require('../models/Transcript');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { GoogleAIFileManager } = require('@google/generative-ai/server');
+const llmService = require('../services/llmService');
 
 const router = express.Router();
 
@@ -296,51 +295,7 @@ router.post('/url', async (req, res) => {
                 });
                 
                 // Start transcription
-                const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-                const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
-
-                const uploadResult = await fileManager.uploadFile(mp3DestPath, {
-                    mimeType: 'audio/mpeg',
-                    displayName: mp3FileName
-                });
-
-                const model = genAI.getGenerativeModel({
-                    model: process.env.LLM_MODEL || 'gemini-1.5-flash',
-                });
-                
-                const audioPart = { fileData: { mimeType: uploadResult.file.mimeType, fileUri: uploadResult.file.uri } };
-
-                const prompt = "Transcribe the provided audio with word-level timestamps and identify the speaker for each word. Format the output as a JSON array of objects, where each object represents a single word with precise millisecond timing. Each object should have 'start' (in format MM:SS:mmm), 'end' (in format MM:SS:mmm), 'text' (single word), and 'speaker' fields. For example: [{'start': '00:00:000', 'end': '00:00:450', 'text': 'Hello', 'speaker': 'Speaker 1'}, {'start': '00:00:450', 'end': '00:00:890', 'text': 'world', 'speaker': 'Speaker 1'}]";
-
-                const result = await model.generateContent({
-                    contents: [{
-                        role: 'user',
-                        parts: [
-                            { text: prompt },
-                            audioPart,
-                        ],
-                    }],
-                    generationConfig: {
-                        responseMimeType: 'application/json',
-                        responseSchema: {
-                            type: 'ARRAY',
-                            items: {
-                                type: 'OBJECT',
-                                properties: {
-                                    start: { type: 'STRING' },
-                                    end: { type: 'STRING' },
-                                    text: { type: 'STRING' },
-                                    speaker: { type: 'STRING' },
-                                },
-                                required: ['start', 'end', 'text', 'speaker'],
-                                propertyOrdering: ['start', 'end', 'text', 'speaker'],
-                            },
-                        },
-                    },
-                });
-
-                const response = await result.response;
-                const transcriptContent = JSON.parse(response.text());
+                const transcriptContent = await llmService.transcribeAudio(mp3DestPath, mp3FileName);
 
                 // Update transcript with transcription and mark as completed
                 const finalTranscript = await Transcript.findByIdAndUpdate(transcript._id, {
